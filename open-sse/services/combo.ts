@@ -633,7 +633,18 @@ export async function buildAutoCandidates(
   return rejectRetiredAutoComboCandidates(
     candidates.filter((c) => {
       const hiddenModels = hiddenModelsMap.get(c.provider);
-      return !hiddenModels?.has(c.model);
+      if (hiddenModels?.has(c.model)) return false;
+
+      if (c.connectionId) {
+        return !isModelLocked(c.provider, c.connectionId, c.model);
+      }
+
+      const providerConnections = connectionsByProvider.get(c.provider) ?? [];
+      if (providerConnections.length === 0) return true;
+
+      return providerConnections.some(
+        (connection) => !isModelLocked(c.provider, String(connection.id ?? ""), c.model)
+      );
     })
   );
 }

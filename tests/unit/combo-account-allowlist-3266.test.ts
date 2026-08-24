@@ -26,6 +26,7 @@ const core = await import("../../src/lib/db/core.ts");
 const providersDb = await import("../../src/lib/db/providers.ts");
 const { buildAutoCandidates, handleComboChat } = await import("../../open-sse/services/combo.ts");
 const { getProviderCredentials } = await import("../../src/sse/services/auth.ts");
+const accountFallback = await import("../../open-sse/services/accountFallback.ts");
 const { normalizeComboStep } = await import("../../src/lib/combos/steps.ts");
 const { buildPrecisionComboModelStep } = await import("../../src/lib/combos/builderDraft.ts");
 
@@ -58,6 +59,7 @@ async function seedConn(name: string, tags?: string[]) {
 }
 
 test.beforeEach(async () => {
+  accountFallback.clearAllModelLockouts();
   await resetStorage();
 });
 
@@ -185,6 +187,57 @@ test("buildAutoCandidates expands dynamic auto steps only within allowedConnecti
   assert.deepEqual([...connectionIds].sort(), [foo1.id, foo2.id].sort());
   assert.ok(connectionIds.every((connectionId) => allowed.has(connectionId!)));
   assert.ok(connectionIds.every((connectionId) => !forbidden.has(connectionId!)));
+});
+
+test("buildAutoCandidates excludes active model lockouts from stored auto combos", async () => {
+  const locked = await seedConn("locked");
+  const available = await seedConn("available");
+  accountFallback.lockModel("openai", locked.id, "gpt-4o-mini", "rate_limited", 60_000);
+
+  const candidates = await buildAutoCandidates(
+    [
+      {
+        kind: "model",
+        stepId: "openai/gpt-4o-mini",
+        executionKey: "openai/gpt-4o-mini",
+        modelStr: "openai/gpt-4o-mini",
+        provider: "openai",
+        providerId: "openai",
+        connectionId: null,
+        weight: 1,
+        label: null,
+      },
+    ],
+    "auto-lockout"
+  );
+
+  assert.ok(candidates.some((candidate) => candidate.connectionId === available.id));
+  assert.ok(candidates.every((candidate) => candidate.connectionId !== locked.id));
+});
+
+test("buildAutoCandidates removes provider-level candidates only when every connection is locked", async () => {
+  const first = await seedConn("first");
+  const second = await seedConn("second");
+  accountFallback.lockModel("openai", first.id, "gpt-4o-mini", "rate_limited", 60_000);
+
+  const target = {
+    kind: "model" as const,
+    stepId: "openai/gpt-4o-mini",
+    executionKey: "openai/gpt-4o-mini",
+    modelStr: "openai/gpt-4o-mini",
+    provider: "openai",
+    providerId: "openai",
+    connectionId: null,
+    weight: 1,
+    label: null,
+  };
+
+  const partiallyAvailable = await buildAutoCandidates([target], "auto-partial-lockout");
+  assert.ok(partiallyAvailable.length > 0);
+
+  accountFallback.lockModel("openai", second.id, "gpt-4o-mini", "rate_limited", 60_000);
+  const fullyLocked = await buildAutoCandidates([target], "auto-full-lockout");
+  assert.deepEqual(fullyLocked, []);
 });
 
 // ── 3. Acceptance: the credential selector never escapes the allowlist ───────
