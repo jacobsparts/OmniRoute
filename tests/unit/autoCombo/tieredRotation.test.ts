@@ -123,24 +123,60 @@ describe("Tiered Rotation in selectProvider", () => {
     expect(seen.has("openai/gpt-4o") || seen.has("anthropic/claude-opus")).toBe(true);
   });
 
-  it("cheap combo pulls from rest tier (lower scores) more often than smart", () => {
-    const top = makeCandidate({ provider: "openai", model: "gpt-4o", quotaRemaining: 100 });
-    const rest = makeCandidate({
-      provider: "cheap-provider",
-      model: "cheap-model",
+  it("zero-exploration selection never leaves the highest-score equivalence tier", () => {
+    const top = makeCandidate({
+      provider: "openai",
+      model: "gpt-4o",
       quotaRemaining: 100,
-      costPer1MTokens: 0,
-      p95LatencyMs: 5000,
+      p95LatencyMs: 900,
     });
-    const pool = [top, rest];
+    const lower = makeCandidate({
+      provider: "mistral",
+      model: "mistral-large",
+      quotaRemaining: 97,
+      p95LatencyMs: 1000,
+    });
+    const pool = [top, lower];
+    const scored = scorePool(pool, "coding", DEFAULT_WEIGHTS, getTaskFitness);
+    expect(scored[0].score).toBeGreaterThan(scored[1].score);
+    expect(scored[0].score - scored[1].score).toBeLessThan(0.1);
 
     const config = makeConfig("cheap");
-    const counts: Record<string, number> = {};
-    for (let i = 0; i < 200; i++) {
-      const result = selectProvider(config, pool, "coding");
-      counts[result.provider] = (counts[result.provider] ?? 0) + 1;
+    const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0.99);
+    try {
+      for (let i = 0; i < 20; i++) {
+        const result = selectProvider(config, pool, "coding");
+        expect(result.isExploration).toBe(false);
+        expect(result.provider).toBe(scored[0].provider);
+        expect(result.model).toBe(scored[0].model);
+      }
+    } finally {
+      randomSpy.mockRestore();
     }
-    expect(counts["cheap-provider"]).toBeGreaterThan(0);
+  });
+
+  it("explicit exploration can still select a lower-scored candidate", () => {
+    const top = makeCandidate({
+      provider: "openai",
+      model: "gpt-4o",
+      quotaRemaining: 100,
+      p95LatencyMs: 900,
+    });
+    const lower = makeCandidate({
+      provider: "mistral",
+      model: "mistral-large",
+      quotaRemaining: 97,
+      p95LatencyMs: 1000,
+    });
+    const config = { ...makeConfig("cheap"), explorationRate: 1 };
+    const randomSpy = vi.spyOn(Math, "random").mockReturnValueOnce(0).mockReturnValueOnce(0.99);
+    try {
+      const result = selectProvider(config, [top, lower], "coding");
+      expect(result.isExploration).toBe(true);
+      expect(result.provider).toBe("mistral");
+    } finally {
+      randomSpy.mockRestore();
+    }
   });
 
   it("single-candidate pool always returns the same candidate", () => {

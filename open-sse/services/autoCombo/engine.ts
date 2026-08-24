@@ -93,6 +93,8 @@ function tierPreferencesForName(name: string): Record<TierName, number> {
 }
 
 const SCORE_EPSILON = 1e-4;
+// Keep load balancing for candidates whose normalized scores differ by at most one point.
+const EXPLOITATION_EQUIVALENCE_THRESHOLD = 0.01;
 const CLEAR_WINNER_THRESHOLD = 0.1;
 
 class ScoreTierRotator {
@@ -301,8 +303,12 @@ export function selectProvider(
     const idx = Math.floor(Math.random() * candidates_.length);
     selected = candidates_[idx];
   } else {
+    const bestScore = candidates_[0].score;
+    const equivalentCandidates = candidates_.filter(
+      (candidate) => bestScore - candidate.score <= EXPLOITATION_EQUIVALENCE_THRESHOLD
+    );
     const rotator = getRotator(config.name);
-    selected = rotator.pick(candidates_);
+    selected = rotator.pick(equivalentCandidates);
   }
 
   // Budget cap enforcement
