@@ -133,6 +133,7 @@ export const MAXAI_REQUEST_QUEUE_MAX_WAIT_MS = 300_000;
 
 const limiterEffectiveSettings = new WeakMap<Bottleneck, Bottleneck.ConstructorOptions>();
 const preservedReplacementSettings = new Map<string, Bottleneck.ConstructorOptions>();
+const limiterPauseTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const limiterWatchdog = new LimiterWedgeWatchdog({
   limiters,
   limiterLastUsed,
@@ -409,6 +410,7 @@ function shutdownLimiters(): void {
   limiters.clear();
   limiterLastUsed.clear();
   preservedReplacementSettings.clear();
+  clearLimiterPauseTimers();
 }
 
 // Only register shutdown handlers when there are active limiters to shut down.
@@ -508,6 +510,7 @@ export function enableRateLimitProtection(connectionId) {
 export function disableRateLimitProtection(connectionId) {
   enabledConnections.delete(connectionId);
   clearPreservedReplacementSettings(connectionId);
+  clearLimiterPauseTimers(connectionId);
   // Ordinary administrative eviction uses disconnect(), not stop(), so
   // in-flight requests can finish. Wedge recovery is the deliberate exception:
   // it removes the limiter from the cache first, then stops it to settle jobs
@@ -1150,6 +1153,7 @@ export async function __resetRateLimitManagerForTests() {
   initialized = false;
   limiterLastUsed.clear();
   preservedReplacementSettings.clear();
+  clearLimiterPauseTimers();
   limiterFactory = defaultLimiterFactory;
   limiterWatchdog.reset();
   shutdownHandlersRegistered = false;
@@ -1278,11 +1282,7 @@ export function updateFromResponseBody(provider, connectionId, responseBody, sta
       `🚫 [RATE-LIMIT] ${provider}:${connectionId.slice(0, 8)} — body-parsed retry: ${Math.ceil(retryAfterMs / 1000)}s (${reason})`
     );
 
-    updateLimiterSettings(limiter, {
-      reservoir: 0,
-      reservoirRefreshAmount: 60,
-      reservoirRefreshInterval: retryAfterMs,
-    });
+    pauseLimiterUntil(provider, connectionId, model, limiter, retryAfterMs);
   }
 
   if (status !== 429) return;
