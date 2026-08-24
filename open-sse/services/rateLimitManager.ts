@@ -100,6 +100,7 @@ export const ZAI_WEB_REQUEST_QUEUE_MAX_WAIT_MS = 60_000;
 
 const limiterEffectiveSettings = new WeakMap<Bottleneck, Bottleneck.ConstructorOptions>();
 const preservedReplacementSettings = new Map<string, Bottleneck.ConstructorOptions>();
+const limiterPauseTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const limiterWatchdog = new LimiterWedgeWatchdog({
   limiters,
   limiterLastUsed,
@@ -205,6 +206,56 @@ function updateAllLimiterSettings() {
   }
 }
 
+function clearLimiterPauseTimer(key: string): void {
+  const timer = limiterPauseTimers.get(key);
+  if (!timer) return;
+  clearTimeout(timer);
+  limiterPauseTimers.delete(key);
+}
+
+function clearLimiterPauseTimers(connectionId?: string): void {
+  for (const key of Array.from(limiterPauseTimers.keys())) {
+    if (connectionId === undefined || key.includes(connectionId)) {
+      clearLimiterPauseTimer(key);
+    }
+  }
+}
+
+function pauseLimiterUntil(
+  provider: string,
+  connectionId: string,
+  model: string | null,
+  limiter: Bottleneck,
+  retryAfterMs: number
+): void {
+  const key = getLimiterKey(provider, connectionId, model);
+  clearLimiterPauseTimer(key);
+  updateLimiterSettings(limiter, {
+    reservoir: 0,
+    reservoirRefreshAmount: null,
+    reservoirRefreshInterval: null,
+  });
+
+  const releaseTimer = setTimeout(() => {
+    limiterPauseTimers.delete(key);
+    if (limiters.get(key) !== limiter) return;
+
+    const defaults = buildLimiterDefaults();
+    const overrides = connectionRateLimitOverrides.get(connectionId);
+    const resumeRpm = resolveRpm(overrides?.rpm ?? defaults.reservoir);
+    const release = limiter.incrementReservoir(resumeRpm).then(() => {
+      if (limiters.get(key) !== limiter) return;
+      updateLimiterSettings(limiter, {
+        reservoirRefreshAmount: resumeRpm,
+        reservoirRefreshInterval: 60 * 1000,
+      });
+    });
+    trackAsyncOperation(release);
+  }, retryAfterMs);
+  releaseTimer.unref?.();
+  limiterPauseTimers.set(key, releaseTimer);
+}
+
 function clearPreservedReplacementSettings(connectionId: string): void {
   for (const key of preservedReplacementSettings.keys()) {
     if (key.includes(connectionId)) preservedReplacementSettings.delete(key);
@@ -302,6 +353,7 @@ function shutdownLimiters(): void {
   limiters.clear();
   limiterLastUsed.clear();
   preservedReplacementSettings.clear();
+  clearLimiterPauseTimers();
 }
 
 // Only register shutdown handlers when there are active limiters to shut down.
@@ -407,6 +459,7 @@ export function enableRateLimitProtection(connectionId) {
 export function disableRateLimitProtection(connectionId) {
   enabledConnections.delete(connectionId);
   clearPreservedReplacementSettings(connectionId);
+  clearLimiterPauseTimers(connectionId);
   // Ordinary administrative eviction uses disconnect(), not stop(), so
   // in-flight requests can finish. Wedge recovery is the deliberate exception:
   // it removes the limiter from the cache first, then stops it to settle jobs
@@ -445,6 +498,7 @@ export function refreshConnectionRateLimits(connectionId, overrides) {
     connectionRateLimitOverrides.set(connectionId, overrides);
   }
   clearPreservedReplacementSettings(connectionId);
+  clearLimiterPauseTimers(connectionId);
   // Evict limiters referencing this connection so they get recreated on next use
   for (const [key, limiter] of Array.from(limiters)) {
     if (key.includes(connectionId)) {
@@ -733,7 +787,11 @@ export function updateFromHeaders(provider, connectionId, headers, status, model
     limiterWatchdog.forget(limiter);
     limiterLastUsed.delete(limiterKey);
     preservedReplacementSettings.delete(limiterKey);
+    clearLimiterPauseTimer(limiterKey);
     trackAsyncOperation(limiter.disconnect());
+
+    const blockedLimiter = getLimiter(provider, connectionId, model);
+    pauseLimiterUntil(provider, connectionId, model, blockedLimiter, retryAfterMs);
     return;
   }
 
@@ -915,6 +973,7 @@ export async function __resetRateLimitManagerForTests() {
   initialized = false;
   limiterLastUsed.clear();
   preservedReplacementSettings.clear();
+  clearLimiterPauseTimers();
   limiterFactory = defaultLimiterFactory;
   limiterWatchdog.reset();
   shutdownHandlersRegistered = false;
@@ -1023,10 +1082,6 @@ export function updateFromResponseBody(provider, connectionId, responseBody, sta
       `🚫 [RATE-LIMIT] ${provider}:${connectionId.slice(0, 8)} — body-parsed retry: ${Math.ceil(retryAfterMs / 1000)}s (${reason})`
     );
 
-    updateLimiterSettings(limiter, {
-      reservoir: 0,
-      reservoirRefreshAmount: 60,
-      reservoirRefreshInterval: retryAfterMs,
-    });
+    pauseLimiterUntil(provider, connectionId, model, limiter, retryAfterMs);
   }
 }
