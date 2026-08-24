@@ -379,6 +379,17 @@ export async function buildAutoCandidates(
     })
   );
 
+  for (const target of targets) {
+    const routingProvider = target.provider;
+    const canonicalProvider = parseModel(target.modelStr).provider;
+    if (!routingProvider || !canonicalProvider || routingProvider === canonicalProvider) continue;
+    if ((connectionsByProvider.get(routingProvider) ?? []).length > 0) continue;
+
+    const canonicalConnections = connectionsByProvider.get(canonicalProvider) ?? [];
+    connectionsByProvider.set(routingProvider, canonicalConnections);
+    connectionPoolCounts.set(routingProvider, canonicalConnections.length);
+  }
+
   const expandedTargets = expandPromptCacheAffinityTargetsFromConnections(
     targets,
     connectionsByProvider
@@ -624,6 +635,39 @@ export async function buildAutoCandidates(
       );
     })
   );
+  const baseCandidateExecutionKey = (candidate: AutoProviderCandidate): string => {
+    if (!candidate.connectionId) return candidate.executionKey;
+    const connectionSuffix = `@${candidate.connectionId}`;
+    return candidate.executionKey.endsWith(connectionSuffix)
+      ? candidate.executionKey.slice(0, -connectionSuffix.length)
+      : candidate.executionKey;
+  };
+  const explicitlyPinnedTargets = new Set(
+    targets
+      .filter((target) => target.connectionId)
+      .map((target) => `${target.executionKey}:${target.connectionId}`)
+  );
+
+  return visibleCandidates.filter((candidate) => {
+    if (!candidate.connectionId) return true;
+
+    const canonicalProvider = parseModel(candidate.modelStr).provider || candidate.provider;
+    if (!isModelLocked(canonicalProvider, candidate.connectionId, candidate.model)) return true;
+    const candidateBaseKey = baseCandidateExecutionKey(candidate);
+    if (explicitlyPinnedTargets.has(`${candidateBaseKey}:${candidate.connectionId}`)) {
+      return false;
+    }
+
+    // Keep every concrete candidate when the whole dynamic pool is locked. Dispatch-time
+    // lockout checks then feed #7360's cooldown-aware wait instead of collapsing to a 404.
+    return !visibleCandidates.some((sibling) => {
+      if (baseCandidateExecutionKey(sibling) !== candidateBaseKey || !sibling.connectionId) {
+        return false;
+      }
+      const siblingProvider = parseModel(sibling.modelStr).provider || sibling.provider;
+      return !isModelLocked(siblingProvider, sibling.connectionId, sibling.model);
+    });
+  });
 }
 
 // Context-cache pin health gate — moved to combo/dispatchPrelude.ts alongside the
