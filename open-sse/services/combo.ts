@@ -446,6 +446,17 @@ export async function buildAutoCandidates(
     })
   );
 
+  for (const target of targets) {
+    const routingProvider = target.provider;
+    const canonicalProvider = parseModel(target.modelStr).provider;
+    if (!routingProvider || !canonicalProvider || routingProvider === canonicalProvider) continue;
+    if ((connectionsByProvider.get(routingProvider) ?? []).length > 0) continue;
+
+    const canonicalConnections = connectionsByProvider.get(canonicalProvider) ?? [];
+    connectionsByProvider.set(routingProvider, canonicalConnections);
+    connectionPoolCounts.set(routingProvider, canonicalConnections.length);
+  }
+
   const expandedTargets = expandPromptCacheAffinityTargetsFromConnections(
     targets,
     connectionsByProvider
@@ -635,29 +646,45 @@ export async function buildAutoCandidates(
 
   // Filter out candidates whose model is hidden by the user in the dashboard,
   // then drop vendor-retired ids so auto-combo cannot pick them (#11625).
-  return rejectRetiredAutoComboCandidates(
-    candidates.filter((c) => {
-      const hiddenModels = hiddenModelsMap.get(c.provider);
-      if (hiddenModels?.has(c.model)) return false;
-
-      const canonicalProvider = parseModel(c.modelStr).provider || c.provider;
-
-      if (c.connectionId) {
-        return !isModelLocked(canonicalProvider, c.connectionId, c.model);
-      }
-
-      const directProviderConnections = connectionsByProvider.get(c.provider) ?? [];
-      const providerConnections =
-        directProviderConnections.length > 0
-          ? directProviderConnections
-          : (connectionsByProvider.get(canonicalProvider) ?? []);
-      if (providerConnections.length === 0) return true;
-
-      return providerConnections.some(
-        (connection) => !isModelLocked(canonicalProvider, String(connection.id ?? ""), c.model)
-      );
+  const visibleCandidates = rejectRetiredAutoComboCandidates(
+    candidates.filter((candidate) => {
+      const hiddenModels = hiddenModelsMap.get(candidate.provider);
+      return !hiddenModels?.has(candidate.model);
     })
   );
+  const baseCandidateExecutionKey = (candidate: AutoProviderCandidate): string => {
+    if (!candidate.connectionId) return candidate.executionKey;
+    const connectionSuffix = `@${candidate.connectionId}`;
+    return candidate.executionKey.endsWith(connectionSuffix)
+      ? candidate.executionKey.slice(0, -connectionSuffix.length)
+      : candidate.executionKey;
+  };
+  const explicitlyPinnedTargets = new Set(
+    targets
+      .filter((target) => target.connectionId)
+      .map((target) => `${target.executionKey}:${target.connectionId}`)
+  );
+
+  return visibleCandidates.filter((candidate) => {
+    if (!candidate.connectionId) return true;
+
+    const canonicalProvider = parseModel(candidate.modelStr).provider || candidate.provider;
+    if (!isModelLocked(canonicalProvider, candidate.connectionId, candidate.model)) return true;
+    const candidateBaseKey = baseCandidateExecutionKey(candidate);
+    if (explicitlyPinnedTargets.has(`${candidateBaseKey}:${candidate.connectionId}`)) {
+      return false;
+    }
+
+    // Keep every concrete candidate when the whole dynamic pool is locked. Dispatch-time
+    // lockout checks then feed #7360's cooldown-aware wait instead of collapsing to a 404.
+    return !visibleCandidates.some((sibling) => {
+      if (baseCandidateExecutionKey(sibling) !== candidateBaseKey || !sibling.connectionId) {
+        return false;
+      }
+      const siblingProvider = parseModel(sibling.modelStr).provider || sibling.provider;
+      return !isModelLocked(siblingProvider, sibling.connectionId, sibling.model);
+    });
+  });
 }
 
 // Context-cache pin health gate — moved to combo/dispatchPrelude.ts alongside the
@@ -1304,8 +1331,21 @@ async function handleComboChatInner({
           return stopProtectedPriorityTarget(`Target ${modelStr} is unavailable`);
         }
 
-        // Pre-check: skip models locked by the resilience system (model-level lockout)
-        if (provider && rawModel && isModelLocked(provider, target.connectionId || "", rawModel)) {
+        // Pre-check: skip models locked by the resilience system (model-level lockout).
+        // Routing aliases (for example `nous`) must use the canonical provider stored in
+        // connection/model lockout keys (`nous-research`).
+        const canonicalLockoutProvider = parseModel(modelStr).provider || provider;
+        const modelLockout =
+          canonicalLockoutProvider && rawModel
+            ? getModelLockoutInfo(canonicalLockoutProvider, target.connectionId || "", rawModel)
+            : null;
+        if (modelLockout && modelLockout.remainingMs > 0) {
+          const lockoutRetryAfter = new Date(Date.now() + modelLockout.remainingMs);
+          if (!earliestRetryAfter || lockoutRetryAfter < new Date(earliestRetryAfter)) {
+            earliestRetryAfter = lockoutRetryAfter;
+          }
+          lastStatus ??= 429;
+          lastError ??= `Model ${modelStr} is locked`;
           log.info("COMBO", `Skipping ${modelStr} — model locked by resilience (cooldown active)`);
           recordComboDecision(traceInvocationId, {
             step: target.executionKey,
@@ -2326,7 +2366,11 @@ async function handleComboChatInner({
               !protectedPriorityTarget &&
               provider &&
               rawModel &&
-              isModelLocked(provider, targetWithConnection.connectionId || "", rawModel)
+              isModelLocked(
+                parseModel(modelStr).provider || provider,
+                targetWithConnection.connectionId || "",
+                rawModel
+              )
             ) {
               log.info("COMBO", `Skipping retry for ${modelStr} — model lockout active`);
               // Live incident (log id 1784457764961-73): earliestRetryAfter is already
@@ -2759,9 +2803,10 @@ async function handleComboChatInner({
           // orderedTargets[0] behavior), but heterogeneous combos carry a
           // different model per target.
           lookupLock: (provider, connectionId, target) => {
-            const rawModel = parseModel(target?.modelStr ?? "").model || "";
+            const parsed = parseModel(target?.modelStr ?? "");
+            const rawModel = parsed.model || "";
             if (!rawModel) return null;
-            return getModelLockoutInfo(provider, connectionId, rawModel);
+            return getModelLockoutInfo(parsed.provider || provider, connectionId, rawModel);
           },
           computeWaitMs: (retryAfter) => computeClosestRetryAfter(retryAfter).waitMs,
         });

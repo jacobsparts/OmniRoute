@@ -215,7 +215,7 @@ test("buildAutoCandidates excludes active model lockouts from stored auto combos
   assert.ok(candidates.every((candidate) => candidate.connectionId !== locked.id));
 });
 
-test("buildAutoCandidates removes provider-level candidates only when every connection is locked", async () => {
+test("buildAutoCandidates keeps all-locked candidates for cooldown-aware retry", async () => {
   const first = await seedConn("first");
   const second = await seedConn("second");
   accountFallback.lockModel("openai", first.id, "gpt-4o-mini", "rate_limited", 60_000);
@@ -233,11 +233,17 @@ test("buildAutoCandidates removes provider-level candidates only when every conn
   };
 
   const partiallyAvailable = await buildAutoCandidates([target], "auto-partial-lockout");
-  assert.ok(partiallyAvailable.length > 0);
+  assert.deepEqual(
+    partiallyAvailable.map((candidate) => candidate.connectionId),
+    [second.id]
+  );
 
   accountFallback.lockModel("openai", second.id, "gpt-4o-mini", "rate_limited", 60_000);
   const fullyLocked = await buildAutoCandidates([target], "auto-full-lockout");
-  assert.deepEqual(fullyLocked, []);
+  assert.deepEqual(
+    new Set(fullyLocked.map((candidate) => candidate.connectionId)),
+    new Set([first.id, second.id])
+  );
 });
 
 test("buildAutoCandidates resolves routing aliases before checking model lockouts", async () => {
@@ -273,7 +279,83 @@ test("buildAutoCandidates resolves routing aliases before checking model lockout
     "auto-alias-lockout"
   );
 
-  assert.deepEqual(candidates, []);
+  assert.equal(candidates.length, 1);
+  assert.equal(candidates[0]?.connectionId, connection.id);
+  assert.equal(candidates[0]?.provider, "nous");
+});
+
+test("stored Auto alias waits out a canonical pre-existing lock before dispatch", async () => {
+  const connection = await providersDb.createProviderConnection({
+    provider: "nous-research",
+    authType: "apikey",
+    name: "nous-canonical-wait",
+    apiKey: "sk-nous-canonical-wait",
+    isActive: true,
+  });
+  const cooldownMs = 150;
+  accountFallback.lockModel(
+    "nous-research",
+    connection.id,
+    "stealth/ox-alpha",
+    "rate_limited",
+    cooldownMs
+  );
+
+  const calls: Array<{ connectionId: string | null; elapsedMs: number }> = [];
+  const startedAt = Date.now();
+  const response = await handleComboChat({
+    body: { model: "auto-alias-wait", messages: [{ role: "user", content: "hi" }] },
+    combo: {
+      name: "auto-alias-wait",
+      strategy: "auto",
+      models: [
+        {
+          kind: "model",
+          model: "nous/stealth/ox-alpha",
+          providerId: "nous",
+        },
+      ],
+      config: {
+        auto: { explorationRate: 0 },
+        maxRetries: 0,
+        retryDelayMs: 0,
+        fallbackDelayMs: 0,
+        maxSetRetries: 0,
+      },
+    },
+    handleSingleModel: async (
+      _body: unknown,
+      _modelStr: string,
+      target: { connectionId?: string | null }
+    ) => {
+      calls.push({
+        connectionId: target.connectionId ?? null,
+        elapsedMs: Date.now() - startedAt,
+      });
+      return okResponse("recovered");
+    },
+    isModelAvailable: async () => true,
+    log: createLog(),
+    settings: {
+      resilienceSettings: {
+        comboCooldownWait: {
+          enabled: true,
+          maxWaitMs: 1000,
+          maxAttempts: 1,
+          budgetMs: 2000,
+        },
+      },
+    },
+    allCombos: null,
+  });
+
+  assert.equal(response.status, 200);
+  assert.equal(calls.length, 1, "the locked target must not dispatch before cooldown expiry");
+  assert.equal(calls[0]?.connectionId, connection.id);
+  assert.ok(
+    (calls[0]?.elapsedMs ?? 0) >= cooldownMs,
+    `expected dispatch after the ${cooldownMs}ms lock, got ${calls[0]?.elapsedMs ?? 0}ms`
+  );
 });
 
 // ── 3. Acceptance: the credential selector never escapes the allowlist ───────

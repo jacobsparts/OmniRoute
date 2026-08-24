@@ -409,15 +409,23 @@ export async function resolveAutoStrategyOrder(
       };
     }
 
-    // Keep eligibleTargets as the last-resort fallback tail: dedupe drops the
-    // routable ranked ones (and, when the cutoff is OFF, makes this identical to
-    // the pre-cutoff behavior), but a quota-blocked target still survives as a
-    // final fallback instead of vanishing — the hard cutoff only de-prioritizes.
-    orderedTargets = dedupeTargetsByExecutionKey(
-      [selectedTarget, ...rankedTargets, ...eligibleTargets].filter(
-        (entry): entry is ResolvedComboTarget => entry !== undefined && entry !== null
-      )
+    // Keep quota-blocked targets as a last-resort fallback tail, but do not append
+    // a connection-less original when ranked concrete connection targets already
+    // represent it. That duplicate would bypass per-connection lockouts after every
+    // concrete sibling was skipped.
+    const fallbackTail = eligibleTargets.filter(
+      (target) =>
+        !rankedTargets.some(
+          (rankedTarget) =>
+            rankedTarget.executionKey === target.executionKey ||
+            rankedTarget.executionKey.startsWith(`${target.executionKey}@`)
+        )
     );
+    orderedTargets = dedupeTargetsByExecutionKey([
+      selectedTarget,
+      ...rankedTargets,
+      ...fallbackTail,
+    ]);
 
     log.info(
       "COMBO",
