@@ -3,11 +3,10 @@
  * of `oc/`.
  *
  * The no-auth OpenCode provider has id "opencode" and alias "oc". The combo
- * builder built `qualifiedModel` from the provider *id* (`opencode/big-pickle`),
- * but `parseModel("opencode/...")` resolves to the **opencode-zen** provider
- * (an api-key tier) via a manual ALIAS_TO_PROVIDER_ID override — not the no-auth
- * "opencode" provider. The user-facing routing alias `oc/` resolves correctly
- * (`oc/big-pickle` → provider "opencode").
+ * builder built `qualifiedModel` from the provider *id* (`opencode/big-pickle`)
+ * instead of the declared `oc` alias. The fork preserves `opencode` as the
+ * canonical no-auth provider identity, while `oc/` remains its preferred
+ * user-facing routing prefix.
  *
  * This test drives the real builder against a fresh DB and asserts that no-auth
  * OpenCode models carry the `oc/` prefix.
@@ -76,8 +75,7 @@ test("#2901 configured OpenCode connections also use the oc/ prefix", async () =
   );
 });
 
-test("#2901 the oc/ prefix actually resolves back to the no-auth opencode provider", () => {
-  // Guards the premise: opencode/ misroutes to opencode-zen, oc/ is correct.
+test("#2901 OpenCode Free prefixes resolve to the canonical no-auth provider", () => {
   assert.equal(parseModel("oc/big-pickle").provider, "opencode");
-  assert.equal(parseModel("opencode/big-pickle").provider, "opencode-zen");
+  assert.equal(parseModel("opencode/big-pickle").provider, "opencode");
 });
