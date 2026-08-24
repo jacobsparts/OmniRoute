@@ -250,8 +250,14 @@ export function resolveComboTargetTimeoutMs(
     ? normalizePositiveTimeoutMs(config.targetTimeoutMs)
     : 0;
 
-  // Explicit per-combo config overrides the upstream/default timeout.
-  if (configuredTimeoutMs > 0) return configuredTimeoutMs;
+  // Explicit per-combo config can raise the combo fallback default, but it cannot
+  // outlive an enabled upstream deadline. If upstream timeout is disabled (0), the
+  // configured timer remains the only effective bound.
+  if (configuredTimeoutMs > 0) {
+    return ceilingTimeoutMs > 0
+      ? Math.min(configuredTimeoutMs, ceilingTimeoutMs)
+      : configuredTimeoutMs;
+  }
 
   // Unset config: fall back to the saner combo default (when provided) so a hung target
   // fails over fast instead of inheriting the full upstream timeout. Never exceed the
