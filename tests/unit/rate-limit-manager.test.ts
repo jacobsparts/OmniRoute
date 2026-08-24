@@ -766,12 +766,71 @@ test("rate limit manager handles soft over-limit warnings and normal header lear
   assert.ok(allStatuses["claude:conn-high-remaining"]);
 });
 
+test("header-derived Retry-After blocks dispatch until the deadline", async () => {
+  const connectionId = "conn-header-pause";
+  rateLimitManager.enableRateLimitProtection(connectionId);
+  rateLimitManager.updateFromHeaders(
+    "openai",
+    connectionId,
+    { "retry-after": "100ms" },
+    429,
+    "gpt-4o"
+  );
+
+  let dispatched = false;
+  const pending = rateLimitManager.withRateLimit(
+    "openai",
+    connectionId,
+    "gpt-4o",
+    async () => {
+      dispatched = true;
+      return "released";
+    }
+  );
+
+  await wait(30);
+  assert.equal(dispatched, false);
+  assert.equal(await Promise.race([pending, wait(300).then(() => "timed-out")]), "released");
+});
+
+test("body-derived retry hints block dispatch until the deadline", async () => {
+  const connectionId = "conn-body-pause";
+  rateLimitManager.enableRateLimitProtection(connectionId);
+  rateLimitManager.updateFromResponseBody(
+    "openai",
+    connectionId,
+    { error: { details: [{ retryDelay: "100ms" }] } },
+    429,
+    "gpt-4o"
+  );
+
+  let dispatched = false;
+  const pending = rateLimitManager.withRateLimit(
+    "openai",
+    connectionId,
+    "gpt-4o",
+    async () => {
+      dispatched = true;
+      return "released";
+    }
+  );
+
+  await wait(30);
+  assert.equal(dispatched, false);
+  assert.equal(await Promise.race([pending, wait(300).then(() => "timed-out")]), "released");
+});
+
 test("rate limit manager handles 429 limiter teardown and disable cleanup", async () => {
   rateLimitManager.enableRateLimitProtection("conn-429");
   rateLimitManager.updateFromHeaders("openai", "conn-429", { "retry-after": "1s" }, 429, "gpt-4o");
   await wait(25);
 
-  assert.equal(rateLimitManager.getRateLimitStatus("openai", "conn-429").active, false);
+  const pausedState = await rateLimitManager.__getLimiterStateForTests(
+    "openai",
+    "conn-429",
+    "gpt-4o"
+  );
+  assert.equal(pausedState?.reservoir, 0);
 
   rateLimitManager.enableRateLimitProtection("conn-disable");
   rateLimitManager.updateFromHeaders(
