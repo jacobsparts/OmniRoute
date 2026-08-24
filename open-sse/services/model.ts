@@ -41,6 +41,8 @@ for (const [id, alias] of Object.entries(PROVIDER_ID_TO_ALIAS)) {
 // Manual alias overrides — maps slug-style prefixes to canonical provider IDs.
 // These live outside the registry because they represent multiple providers
 // or backward-compatible slug changes, not a single provider's display name.
+// opencode/ → opencode-zen (the main free/open tier; opencode-go is a separate paid tier)
+ALIAS_TO_PROVIDER_ID["opencode"] = "opencode-zen";
 // xiaomi/ is the user-visible prefix for MiMo models; register it so
 // parseModel("xiaomi/mimo-v2-flash") resolves provider = "xiaomi-mimo" instead
 // of falling through to the identity fallback ("xiaomi").
@@ -649,8 +651,17 @@ async function resolveModelByProviderInference(modelId: string, extendedContext:
     }
   }
 
-  // Opencode free-tier models route to an active opencode-family provider — prevents
-  // prefix inference from misrouting -free names when the live catalog is unavailable.
+  // Opencode free-tier models always route to opencode when active — prevents
+  // prefix inference from misrouting -free names to other providers when the
+  // live catalog is temporarily unreachable.
+  //
+  // A literal `activeProviders?.has("opencode")` check is unreachable in
+  // practice: `getActiveProviderSet()` canonicalizes every connection's
+  // provider id through `resolveProviderAlias()`, and the manual override
+  // above (`ALIAS_TO_PROVIDER_ID["opencode"] = "opencode-zen"`) rewrites any
+  // "opencode" id to "opencode-zen" before it ever reaches the active set —
+  // so an active no-auth opencode connection never appears as "opencode".
+  // Check both opencode-family canonical ids that catalog this model id.
   if (modelId === "big-pickle" || modelId.endsWith("-free")) {
     const candidates = MODEL_TO_PROVIDERS.get(modelId) || [];
     const activeOpencodeCandidate = candidates.find(
