@@ -5,16 +5,11 @@
  * connection is temporarily stale/incomplete and would otherwise exclude it
  * during the normal live-catalog reconciliation step.
  *
- * This also regression-guards a bug found while writing this test: the
- * short-circuit as originally shipped checked `activeProviders?.has("opencode")`
- * literally. `getActiveProviderSet()` canonicalizes every connection's
- * provider id through `resolveProviderAlias()`, and a manual override in
- * `open-sse/services/model.ts` (`ALIAS_TO_PROVIDER_ID["opencode"] =
- * "opencode-zen"`) rewrites any "opencode" id to "opencode-zen" before it
- * ever reaches the active set — so a real active no-auth "opencode"
- * connection NEVER appears as "opencode" in `activeProviders`, making the
- * literal check unreachable. The fix checks every opencode-family candidate
- * (`opencode` and `opencode-zen`) that actually catalogs the model id.
+ * This also regression-guards a configured-identity collision: the public
+ * `opencode/` routing prefix deliberately selects OpenCode Zen, but `opencode`
+ * is also the canonical persisted provider ID for the distinct no-auth OpenCode
+ * Free provider exposed as `oc/`. Configuration and catalog values must preserve
+ * registered canonical IDs instead of reinterpreting them as routing prefixes.
  *
  * Without the short-circuit (or with the original unreachable literal
  * check), an active opencode connection + active opencode-zen connection
@@ -42,7 +37,7 @@ test.after(() => {
   fs.rmSync(TEST_DATA_DIR, { recursive: true, force: true });
 });
 
-test("bare big-pickle routes to an opencode-family provider when an opencode connection is active", async () => {
+test("bare big-pickle honors an active canonical OpenCode Free connection", async () => {
   await providersDb.createProviderConnection({
     provider: "opencode",
     authType: "apikey",
@@ -52,14 +47,15 @@ test("bare big-pickle routes to an opencode-family provider when an opencode con
   });
 
   const info = await getModelInfoCore("big-pickle", null);
-  assert.ok(
-    info.provider === "opencode" || info.provider === "opencode-zen",
-    `expected an opencode-family provider, got ${info.provider}`
+  assert.equal(
+    info.provider,
+    "opencode",
+    "a configured canonical OpenCode Free provider must not be rewritten to opencode-zen"
   );
   assert.equal(info.model, "big-pickle");
 });
 
-test("bare deepseek-v4-flash-free (-free suffix) routes to an opencode-family provider when active", async () => {
+test("bare -free model honors an active canonical OpenCode Free connection", async () => {
   await providersDb.createProviderConnection({
     provider: "opencode",
     authType: "apikey",
@@ -69,9 +65,10 @@ test("bare deepseek-v4-flash-free (-free suffix) routes to an opencode-family pr
   });
 
   const info = await getModelInfoCore("deepseek-v4-flash-free", null);
-  assert.ok(
-    info.provider === "opencode" || info.provider === "opencode-zen",
-    `expected an opencode-family provider, got ${info.provider}`
+  assert.equal(
+    info.provider,
+    "opencode",
+    "an active OpenCode Free configuration must remain distinct from OpenCode Zen"
   );
   assert.equal(info.model, "deepseek-v4-flash-free");
 });

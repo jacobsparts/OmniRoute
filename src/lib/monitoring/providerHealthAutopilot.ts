@@ -3,7 +3,7 @@ import { createHash } from "crypto";
 import { getProviderConnections, updateProviderConnection } from "@/lib/db/providers";
 import { getCachedProviderConnectionById } from "@/lib/localDb";
 import { clearProviderFailure, clearModelLock } from "@omniroute/open-sse/services/accountFallback";
-import { resolveProviderAlias } from "@omniroute/open-sse/services/model";
+import { resolveConfiguredProviderId } from "@omniroute/open-sse/services/model";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -113,7 +113,7 @@ function toString(value: unknown): string | null {
 
 function canonicalProviderId(value: unknown): string | null {
   const provider = toString(value);
-  return provider ? (resolveProviderAlias(provider) ?? provider) : null;
+  return provider ? (resolveConfiguredProviderId(provider) ?? provider) : null;
 }
 
 function toNumber(value: unknown): number | null {

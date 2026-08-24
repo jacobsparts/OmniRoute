@@ -202,6 +202,37 @@ test("provider health matrix collapses alias-keyed signals into one canonical pr
   assert.equal(filteredByAlias.providers[0]?.circuitBreaker?.state, "OPEN");
 });
 
+test("provider health matrix keeps OpenCode Free separate from OpenCode Zen", async () => {
+  await providersDb.createProviderConnection({
+    id: "matrix-opencode-free",
+    provider: "opencode",
+    authType: "apikey",
+    name: "OpenCode Free",
+    isActive: true,
+  });
+  await providersDb.createProviderConnection({
+    id: "matrix-opencode-zen",
+    provider: "opencode-zen",
+    authType: "apikey",
+    name: "OpenCode Zen",
+    isActive: true,
+  });
+
+  const report = await matrix.buildProviderHealthMatrix({
+    includeHealthy: true,
+    range: "24h",
+  });
+
+  assert.equal(
+    report.providers.find((provider) => provider.provider === "opencode")?.connections.total,
+    1
+  );
+  assert.equal(
+    report.providers.find((provider) => provider.provider === "opencode-zen")?.connections.total,
+    1
+  );
+});
+
 test("provider health matrix treats recovered models as degraded instead of error", async () => {
   const connection = (await providersDb.createProviderConnection({
     id: "matrix-recovered-connection",
