@@ -22,7 +22,7 @@ export const PRE_SCREEN_CONCURRENCY = 5;
  * the whole combo for up to 10 minutes before falling through to the next model
  * (escalated cmqlrhd7c). For STREAMING requests this only bounds the time-to-first-headers
  * — token generation streams after the response resolves, so it is NOT cut short. Operators
- * can still raise it per-combo via `targetTimeoutMs` (capped at the upstream ceiling), or set
+ * can still raise it per-combo via `targetTimeoutMs`, or set
  * a longer value for slow non-streaming reasoning combos.
  */
 export const DEFAULT_COMBO_TARGET_TIMEOUT_MS = 120_000;
@@ -250,11 +250,8 @@ export function resolveComboTargetTimeoutMs(
     ? normalizePositiveTimeoutMs(config.targetTimeoutMs)
     : 0;
 
-  // Explicit per-combo config: honour it, but never extend past the upstream ceiling.
-  if (configuredTimeoutMs > 0) {
-    if (ceilingTimeoutMs <= 0) return configuredTimeoutMs;
-    return Math.min(configuredTimeoutMs, ceilingTimeoutMs);
-  }
+  // Explicit per-combo config overrides the upstream/default timeout.
+  if (configuredTimeoutMs > 0) return configuredTimeoutMs;
 
   // Unset config: fall back to the saner combo default (when provided) so a hung target
   // fails over fast instead of inheriting the full upstream timeout. Never exceed the
