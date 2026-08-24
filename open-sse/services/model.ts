@@ -547,17 +547,8 @@ async function resolveModelByProviderInference(modelId: string, extendedContext:
     }
   }
 
-  // Opencode free-tier models always route to opencode when active — prevents
-  // prefix inference from misrouting -free names to other providers when the
-  // live catalog is temporarily unreachable.
-  //
-  // A literal `activeProviders?.has("opencode")` check is unreachable in
-  // practice: `getActiveProviderSet()` canonicalizes every connection's
-  // provider id through `resolveProviderAlias()`, and the manual override
-  // above (`ALIAS_TO_PROVIDER_ID["opencode"] = "opencode-zen"`) rewrites any
-  // "opencode" id to "opencode-zen" before it ever reaches the active set —
-  // so an active no-auth opencode connection never appears as "opencode".
-  // Check both opencode-family canonical ids that catalog this model id.
+  // Opencode free-tier models route to an active opencode-family provider — prevents
+  // prefix inference from misrouting -free names when the live catalog is unavailable.
   if (modelId === "big-pickle" || modelId.endsWith("-free")) {
     const candidates = MODEL_TO_PROVIDERS.get(modelId) || [];
     const activeOpencodeCandidate = candidates.find(
