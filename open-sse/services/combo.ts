@@ -3100,7 +3100,7 @@ async function handleRoundRobinCombo({
     config as Record<string, unknown> | null | undefined,
     settings as Record<string, unknown> | null | undefined
   );
-  const rrAffinityEnabled = settings?.promptCacheAffinityEnabled !== false;
+  const rrAffinityEnabled = settings?.promptCacheAffinityEnabled === true;
   if (rrAffinityEnabled && resolvePromptCacheAffinityKey(body)) {
     filteredTargets = await expandPromptCacheAffinityTargets(filteredTargets);
     modelCount = filteredTargets.length;
