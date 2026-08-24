@@ -123,57 +123,113 @@ describe("Tiered Rotation in selectProvider", () => {
     expect(seen.has("openai/gpt-4o") || seen.has("anthropic/claude-opus")).toBe(true);
   });
 
-  it("zero-exploration selection never leaves the highest-score equivalence tier", () => {
-    const top = makeCandidate({
-      provider: "openai",
-      model: "gpt-4o",
-      quotaRemaining: 100,
-      p95LatencyMs: 900,
-    });
-    const lower = makeCandidate({
-      provider: "mistral",
-      model: "mistral-large",
-      quotaRemaining: 97,
-      p95LatencyMs: 1000,
-    });
-    const pool = [top, lower];
+  it("named combos preserve their top/mid/rest tier preferences", () => {
+    const pool = [
+      makeCandidate({
+        provider: "top",
+        model: "top-model",
+        quotaRemaining: 100,
+        p95LatencyMs: 900,
+      }),
+      makeCandidate({
+        provider: "mid-a",
+        model: "mid-a-model",
+        quotaRemaining: 98,
+        p95LatencyMs: 1000,
+      }),
+      makeCandidate({
+        provider: "mid-b",
+        model: "mid-b-model",
+        quotaRemaining: 96,
+        p95LatencyMs: 1100,
+      }),
+      makeCandidate({
+        provider: "rest",
+        model: "rest-model",
+        quotaRemaining: 94,
+        p95LatencyMs: 1200,
+      }),
+    ];
     const scored = scorePool(pool, "coding", DEFAULT_WEIGHTS, getTaskFitness);
-    expect(scored[0].score).toBeGreaterThan(scored[1].score);
-    expect(scored[0].score - scored[1].score).toBeLessThan(0.1);
+    expect(scored[0].score - scored.at(-1)!.score).toBeLessThan(0.1);
 
-    const config = makeConfig("cheap");
-    const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0.99);
+    const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0.7);
     try {
-      for (let i = 0; i < 20; i++) {
-        const result = selectProvider(config, pool, "coding");
-        expect(result.isExploration).toBe(false);
-        expect(result.provider).toBe(scored[0].provider);
-        expect(result.model).toBe(scored[0].model);
-      }
+      const cheapResult = selectProvider(makeConfig("cheap-tier-contract"), pool, "coding");
+      const smartResult = selectProvider(makeConfig("smart-tier-contract"), pool, "coding");
+
+      expect(cheapResult.provider).toBe("rest");
+      expect(["mid-a", "mid-b"]).toContain(smartResult.provider);
     } finally {
       randomSpy.mockRestore();
     }
   });
 
-  it("explicit exploration can still select a lower-scored candidate", () => {
+  it("does not manufacture a clear winner from a distant worst outlier", () => {
+    const pool = [
+      makeCandidate({
+        provider: "best",
+        model: "best-model",
+        quotaRemaining: 100,
+        p95LatencyMs: 900,
+      }),
+      makeCandidate({
+        provider: "runner-up",
+        model: "runner-up-model",
+        quotaRemaining: 98,
+        p95LatencyMs: 1000,
+      }),
+      makeCandidate({
+        provider: "outlier",
+        model: "outlier-model",
+        quotaRemaining: 0,
+        p95LatencyMs: 10000,
+        latencyStdDev: 5000,
+        errorRate: 0.5,
+      }),
+    ];
+    const scored = scorePool(pool, "coding", DEFAULT_WEIGHTS, getTaskFitness);
+    expect(scored[0].score - scored[1].score).toBeLessThan(0.1);
+    expect(scored[0].score - scored.at(-1)!.score).toBeGreaterThan(0.1);
+
+    const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0.6);
+    try {
+      const result = selectProvider(makeConfig("smart-outlier-contract"), pool, "coding");
+      expect(result.provider).toBe("runner-up");
+    } finally {
+      randomSpy.mockRestore();
+    }
+  });
+
+  it("keeps a material clear winner ahead of lower tiers", () => {
     const top = makeCandidate({
-      provider: "openai",
-      model: "gpt-4o",
+      provider: "winner",
+      model: "winner-model",
       quotaRemaining: 100,
-      p95LatencyMs: 900,
+      p95LatencyMs: 100,
+      errorRate: 0,
+      connectionPoolSize: 20,
     });
     const lower = makeCandidate({
-      provider: "mistral",
-      model: "mistral-large",
-      quotaRemaining: 97,
-      p95LatencyMs: 1000,
+      provider: "lower",
+      model: "lower-model",
+      quotaRemaining: 1,
+      p95LatencyMs: 10000,
+      latencyStdDev: 5000,
+      errorRate: 0.5,
+      connectionPoolSize: 1,
     });
-    const config = { ...makeConfig("cheap"), explorationRate: 1 };
-    const randomSpy = vi.spyOn(Math, "random").mockReturnValueOnce(0).mockReturnValueOnce(0.99);
+    const pool = [top, lower];
+    const scored = scorePool(pool, "coding", DEFAULT_WEIGHTS, getTaskFitness);
+    expect(scored[0].score - scored[1].score).toBeGreaterThanOrEqual(0.1);
+
+    const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0.99);
     try {
-      const result = selectProvider(config, [top, lower], "coding");
-      expect(result.isExploration).toBe(true);
-      expect(result.provider).toBe("mistral");
+      for (let i = 0; i < 20; i++) {
+        const result = selectProvider(makeConfig("cheap"), pool, "coding");
+        expect(result.provider).toBe(scored[0].provider);
+        expect(result.model).toBe(scored[0].model);
+      }
     } finally {
       randomSpy.mockRestore();
     }

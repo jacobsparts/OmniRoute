@@ -93,8 +93,6 @@ function tierPreferencesForName(name: string): Record<TierName, number> {
 }
 
 const SCORE_EPSILON = 1e-4;
-// Keep load balancing for candidates whose normalized scores differ by at most one point.
-const EXPLOITATION_EQUIVALENCE_THRESHOLD = 0.01;
 const CLEAR_WINNER_THRESHOLD = 0.1;
 
 class ScoreTierRotator {
@@ -111,8 +109,12 @@ class ScoreTierRotator {
 
     const tiers = groupIntoTiers(candidates);
     const best = candidates[0].score;
-    const worst = candidates[candidates.length - 1].score;
-    if (tiers.top.length > 0 && best - worst >= CLEAR_WINNER_THRESHOLD) {
+    const runnerUp = candidates[tiers.top.length]?.score;
+    if (
+      tiers.top.length > 0 &&
+      runnerUp !== undefined &&
+      best - runnerUp >= CLEAR_WINNER_THRESHOLD
+    ) {
       return this.pickFromPool(tiers.top);
     }
     const prefs = tierPreferencesForName(this.comboName);
@@ -303,12 +305,8 @@ export function selectProvider(
     const idx = Math.floor(Math.random() * candidates_.length);
     selected = candidates_[idx];
   } else {
-    const bestScore = candidates_[0].score;
-    const equivalentCandidates = candidates_.filter(
-      (candidate) => bestScore - candidate.score <= EXPLOITATION_EQUIVALENCE_THRESHOLD
-    );
     const rotator = getRotator(config.name);
-    selected = rotator.pick(equivalentCandidates);
+    selected = rotator.pick(candidates_);
   }
 
   // Budget cap enforcement
