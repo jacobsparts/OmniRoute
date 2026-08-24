@@ -778,15 +778,10 @@ test("header-derived Retry-After blocks dispatch until the deadline", async () =
   );
 
   let dispatched = false;
-  const pending = rateLimitManager.withRateLimit(
-    "openai",
-    connectionId,
-    "gpt-4o",
-    async () => {
-      dispatched = true;
-      return "released";
-    }
-  );
+  const pending = rateLimitManager.withRateLimit("openai", connectionId, "gpt-4o", async () => {
+    dispatched = true;
+    return "released";
+  });
 
   await wait(30);
   assert.equal(dispatched, false);
@@ -805,19 +800,70 @@ test("body-derived retry hints block dispatch until the deadline", async () => {
   );
 
   let dispatched = false;
-  const pending = rateLimitManager.withRateLimit(
-    "openai",
-    connectionId,
-    "gpt-4o",
-    async () => {
-      dispatched = true;
-      return "released";
-    }
-  );
+  const pending = rateLimitManager.withRateLimit("openai", connectionId, "gpt-4o", async () => {
+    dispatched = true;
+    return "released";
+  });
 
   await wait(30);
   assert.equal(dispatched, false);
   assert.equal(await Promise.race([pending, wait(300).then(() => "timed-out")]), "released");
+});
+
+test("Retry-After release restores the configured connection RPM", async () => {
+  const connectionId = "conn-pause-rpm";
+  rateLimitManager.refreshConnectionRateLimits(connectionId, { rpm: 7 });
+  rateLimitManager.enableRateLimitProtection(connectionId);
+  rateLimitManager.updateFromHeaders(
+    "openai",
+    connectionId,
+    { "retry-after": "60ms" },
+    429,
+    "gpt-4o"
+  );
+
+  await waitForCondition(
+    async () =>
+      (await rateLimitManager.__getLimiterStateForTests("openai", connectionId, "gpt-4o"))
+        ?.reservoir === 7,
+    "Retry-After release did not restore the configured RPM"
+  );
+});
+
+test("a superseded Retry-After timer cannot release the active limiter early", async () => {
+  const connectionId = "conn-pause-replaced";
+  rateLimitManager.enableRateLimitProtection(connectionId);
+  rateLimitManager.updateFromHeaders(
+    "openai",
+    connectionId,
+    { "retry-after": "50ms" },
+    429,
+    "gpt-4o"
+  );
+  await wait(10);
+
+  rateLimitManager.updateFromResponseBody(
+    "openai",
+    connectionId,
+    { error: { details: [{ retryDelay: "150ms" }] } },
+    429,
+    "gpt-4o"
+  );
+
+  await wait(70);
+  const stillPaused = await rateLimitManager.__getLimiterStateForTests(
+    "openai",
+    connectionId,
+    "gpt-4o"
+  );
+  assert.equal(stillPaused?.reservoir, 0);
+
+  await waitForCondition(
+    async () =>
+      ((await rateLimitManager.__getLimiterStateForTests("openai", connectionId, "gpt-4o"))
+        ?.reservoir ?? 0) > 0,
+    "replacement Retry-After deadline did not release the limiter"
+  );
 });
 
 test("rate limit manager handles 429 limiter teardown and disable cleanup", async () => {

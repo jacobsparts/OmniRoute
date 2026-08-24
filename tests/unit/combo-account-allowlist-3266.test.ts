@@ -240,6 +240,42 @@ test("buildAutoCandidates removes provider-level candidates only when every conn
   assert.deepEqual(fullyLocked, []);
 });
 
+test("buildAutoCandidates resolves routing aliases before checking model lockouts", async () => {
+  const connection = await providersDb.createProviderConnection({
+    provider: "nous-research",
+    authType: "apikey",
+    name: "nous-canonical",
+    apiKey: "sk-nous-canonical",
+    isActive: true,
+  });
+  accountFallback.lockModel(
+    "nous-research",
+    connection.id,
+    "stealth/ox-alpha",
+    "rate_limited",
+    60_000
+  );
+
+  const candidates = await buildAutoCandidates(
+    [
+      {
+        kind: "model",
+        stepId: "nous/stealth/ox-alpha",
+        executionKey: "nous/stealth/ox-alpha",
+        modelStr: "nous/stealth/ox-alpha",
+        provider: "nous",
+        providerId: "nous",
+        connectionId: null,
+        weight: 1,
+        label: null,
+      },
+    ],
+    "auto-alias-lockout"
+  );
+
+  assert.deepEqual(candidates, []);
+});
+
 // ── 3. Acceptance: the credential selector never escapes the allowlist ───────
 
 test("getProviderCredentials never selects a connection outside the step allowlist (#3266)", async () => {

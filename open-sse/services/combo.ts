@@ -413,7 +413,12 @@ export async function buildAutoCandidates(
 
   const uniqueProviders = Array.from(
     new Set(
-      targets.map((target) => target.provider || parseModel(target.modelStr).provider || "unknown")
+      targets.flatMap((target) => {
+        const parsed = parseModel(target.modelStr);
+        return [target.provider, parsed.provider, parsed.providerAlias].filter(
+          (provider): provider is string => Boolean(provider)
+        );
+      })
     )
   );
   const connectionPoolCounts = new Map<string, number>();
@@ -635,15 +640,21 @@ export async function buildAutoCandidates(
       const hiddenModels = hiddenModelsMap.get(c.provider);
       if (hiddenModels?.has(c.model)) return false;
 
+      const canonicalProvider = parseModel(c.modelStr).provider || c.provider;
+
       if (c.connectionId) {
-        return !isModelLocked(c.provider, c.connectionId, c.model);
+        return !isModelLocked(canonicalProvider, c.connectionId, c.model);
       }
 
-      const providerConnections = connectionsByProvider.get(c.provider) ?? [];
+      const directProviderConnections = connectionsByProvider.get(c.provider) ?? [];
+      const providerConnections =
+        directProviderConnections.length > 0
+          ? directProviderConnections
+          : (connectionsByProvider.get(canonicalProvider) ?? []);
       if (providerConnections.length === 0) return true;
 
       return providerConnections.some(
-        (connection) => !isModelLocked(c.provider, String(connection.id ?? ""), c.model)
+        (connection) => !isModelLocked(canonicalProvider, String(connection.id ?? ""), c.model)
       );
     })
   );
