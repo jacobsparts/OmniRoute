@@ -663,7 +663,7 @@ function isPromptCacheAffinityEnabled(
       ? (autoConfigForCacheWeight.weights as Record<string, unknown>)
       : null;
   const autoUsesCacheScore = Number(autoWeightsForCache?.cacheAffinity) > 0;
-  return settings?.promptCacheAffinityEnabled !== false && !autoUsesCacheScore;
+  return settings?.promptCacheAffinityEnabled === true && !autoUsesCacheScore;
 }
 
 /**
