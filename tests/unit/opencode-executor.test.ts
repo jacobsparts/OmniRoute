@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 const { OpencodeExecutor } = await import("../../open-sse/executors/opencode.ts");
 const { DefaultExecutor } = await import("../../open-sse/executors/default.ts");
+const { getExecutor } = await import("../../open-sse/executors/index.ts");
 const { PROVIDER_MODELS } = await import("../../open-sse/config/providerModels.ts");
 
 function createMockResponse() {
@@ -30,6 +31,9 @@ function registerModel(provider, model) {
 }
 
 describe("OpencodeExecutor", () => {
+  it("keeps the canonical opencode provider identity in the executor registry", () => {
+    assert.equal(getExecutor("opencode").provider, "opencode");
+  });
   let zenExecutor;
   let goExecutor;
   let fetchCalls;
