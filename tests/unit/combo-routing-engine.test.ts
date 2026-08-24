@@ -1031,6 +1031,55 @@ test("handleComboChat round-robin rotates sequentially across requests", async (
   assert.deepEqual(calls, ["model-a", "model-b", "model-a"]);
 });
 
+test("handleComboChat round-robin prompt-cache affinity requires explicit opt-in", async () => {
+  const run = async (
+    comboName: string,
+    settings: { promptCacheAffinityEnabled?: boolean } | null
+  ) => {
+    const calls: string[] = [];
+    const log = createLog();
+    const result = await handleComboChat({
+      body: { prompt_cache_key: "rr-opt-in-0" },
+      combo: {
+        name: comboName,
+        strategy: "round-robin",
+        models: ["model-a", "model-b"],
+        config: { maxRetries: 0, disableSessionStickiness: true },
+      },
+      handleSingleModel: async (_body: unknown, modelStr: string) => {
+        calls.push(modelStr);
+        return okResponse();
+      },
+      isModelAvailable: async () => true,
+      log,
+      settings,
+      relayOptions: null,
+      allCombos: null,
+    });
+
+    assert.equal(result.ok, true);
+    return {
+      firstModel: calls[0],
+      affinityApplied: log.entries.some(
+        (entry) => entry.tag === "COMBO-RR" && entry.msg === "Prompt-cache affinity applied"
+      ),
+    };
+  };
+
+  assert.deepEqual(await run("rr-affinity-omitted", null), {
+    firstModel: "model-a",
+    affinityApplied: false,
+  });
+  assert.deepEqual(await run("rr-affinity-disabled", { promptCacheAffinityEnabled: false }), {
+    firstModel: "model-a",
+    affinityApplied: false,
+  });
+  assert.equal(
+    (await run("rr-affinity-enabled", { promptCacheAffinityEnabled: true })).affinityApplied,
+    true
+  );
+});
+
 test("handleComboChat round-robin starts from composite tier default ordering", async () => {
   const calls: any[] = [];
   const combo = {
