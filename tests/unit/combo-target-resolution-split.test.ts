@@ -93,6 +93,46 @@ test("priority strategy resolves combo models into orderedTargets in declared or
     ["openai/gpt-4o", "anthropic/claude-3"]
   );
 });
+test("missing prompt-cache affinity setting preserves strategy order", async () => {
+  const combo = {
+    id: "cache-opt-in",
+    name: "cache-opt-in",
+    models: ["openai/gpt-4o", "anthropic/claude-3"],
+    config: {},
+  };
+  let affinityKey: string | undefined;
+  for (let index = 0; index < 100; index += 1) {
+    const candidate = `cache-opt-in-${index}`;
+    const enabled = await resolveComboTargetPipeline(
+      deps({
+        body: { prompt_cache_key: candidate },
+        combo,
+        strategy: "fallback",
+        settings: { promptCacheAffinityEnabled: true },
+      })
+    );
+    if (!("earlyResponse" in enabled) && enabled.orderedTargets[0]?.modelStr !== combo.models[0]) {
+      affinityKey = candidate;
+      break;
+    }
+  }
+  assert.ok(affinityKey, "fixture must find a key that changes global affinity order");
+
+  const result = await resolveComboTargetPipeline(
+    deps({
+      body: { prompt_cache_key: affinityKey },
+      combo,
+      strategy: "fallback",
+      settings: null,
+    })
+  );
+  assert.ok(!("earlyResponse" in result));
+  if ("earlyResponse" in result) return;
+  assert.deepEqual(
+    result.orderedTargets.map((target) => target.modelStr),
+    combo.models
+  );
+});
 
 test("returns the derived values the attempt loop consumes", async () => {
   const result = await resolveComboTargetPipeline(deps());
