@@ -3,7 +3,7 @@ import { getProviderConnections } from "@/lib/db/providers";
 import { getDbInstance } from "@/lib/db/core";
 import { getAllCircuitBreakerStatuses } from "@/shared/utils/circuitBreaker";
 import { getAllModelLockouts } from "@omniroute/open-sse/services/accountFallback";
-import { resolveProviderAlias } from "@omniroute/open-sse/services/model";
+import { resolveConfiguredProviderId } from "@omniroute/open-sse/services/model";
 import { getWebSessionPoolHealth } from "@omniroute/open-sse/services/webSessionPoolHealth";
 
 type JsonRecord = Record<string, unknown>;
@@ -137,7 +137,7 @@ function toString(value: unknown): string | null {
 
 function canonicalProviderId(value: unknown): string | null {
   const provider = toString(value);
-  return provider ? (resolveProviderAlias(provider) ?? provider) : null;
+  return provider ? (resolveConfiguredProviderId(provider) ?? provider) : null;
 }
 
 function toNumber(value: unknown): number {

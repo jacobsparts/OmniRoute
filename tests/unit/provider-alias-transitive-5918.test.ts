@@ -4,14 +4,12 @@
  *
  * Root cause: resolveProviderAlias() did a single-hop lookup
  * (`ALIAS_TO_PROVIDER_ID[alias] || alias`). The registry has genuine two-hop chains:
- * the parent OpenCode provider registers `id: "opencode", alias: "oc"` (so
- * `oc -> opencode`), and a manual override maps `opencode -> opencode-zen` (the
- * main free tier). With single-hop, `resolveProviderAlias("oc")` returned the
- * intermediate `"opencode"` instead of the final `"opencode-zen"`, so `oc/<model>`
- * resolved to the wrong provider.
+ * the parent OpenCode Free provider registers `id: "opencode", alias: "oc"`
+ * (so `oc -> opencode`), while a manual routing-prefix override maps a directly
+ * entered `opencode` prefix to the distinct `opencode-zen` provider.
  *
- * Fix: resolve transitively with a depth limit AND a seen-set so cycles cannot loop.
- * These assertions FAIL on the old single-hop implementation and pass on the fix.
+ * Resolution remains transitive across alias-only hops, with a depth limit and
+ * seen-set preventing cycles.
  *
  * RECONCILED at v3.8.44 with the #2901 contract: the chain STOPS as soon as a hop
  * lands on a REGISTERED provider id. "oc" is the registry alias of the no-auth
@@ -25,7 +23,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { resolveProviderAlias } from "../../open-sse/services/model.ts";
+import {
+  resolveConfiguredProviderId,
+  resolveProviderAlias,
+} from "../../open-sse/services/model.ts";
 
 test("resolveProviderAlias stops the oc chain at the registered no-auth opencode provider (#2901)", () => {
   // "opencode" is a REGISTERED provider id (the no-auth tier, alias "oc"), so the
@@ -36,6 +37,15 @@ test("resolveProviderAlias stops the oc chain at the registered no-auth opencode
 
 test("resolveProviderAlias resolves a direct one-hop alias", () => {
   assert.equal(resolveProviderAlias("opencode"), "opencode-zen");
+});
+
+test("resolveConfiguredProviderId preserves canonical OpenCode provider identities", () => {
+  assert.equal(resolveConfiguredProviderId("opencode"), "opencode");
+  assert.equal(resolveConfiguredProviderId("opencode-zen"), "opencode-zen");
+});
+
+test("resolveConfiguredProviderId accepts the public OpenCode Free alias", () => {
+  assert.equal(resolveConfiguredProviderId("oc"), "opencode");
 });
 
 test("resolveProviderAlias returns a terminal id unchanged (id === alias)", () => {

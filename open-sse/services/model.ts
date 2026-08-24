@@ -233,7 +233,7 @@ function getProviderIdFromConnection(connection: unknown) {
   const record = connection as ProviderConnectionLike;
   if (typeof record.provider !== "string" || !record.provider) return null;
   if (!isProviderConnectionActive(record)) return null;
-  return resolveProviderAlias(record.provider);
+  return resolveConfiguredProviderId(record.provider);
 }
 
 async function getActiveProviderSet() {
@@ -254,7 +254,7 @@ async function getActiveSyncedProvidersForModel(modelId: string) {
     const { getActiveProvidersWithSyncedModel } = await import("@/lib/db/models");
     const providers = await getActiveProvidersWithSyncedModel(modelId);
     return providers
-      .map(resolveProviderAlias)
+      .map(resolveConfiguredProviderId)
       .filter((provider): provider is string => typeof provider === "string");
   } catch {
     return [];
@@ -551,13 +551,9 @@ async function resolveModelByProviderInference(modelId: string, extendedContext:
   // prefix inference from misrouting -free names to other providers when the
   // live catalog is temporarily unreachable.
   //
-  // A literal `activeProviders?.has("opencode")` check is unreachable in
-  // practice: `getActiveProviderSet()` canonicalizes every connection's
-  // provider id through `resolveProviderAlias()`, and the manual override
-  // above (`ALIAS_TO_PROVIDER_ID["opencode"] = "opencode-zen"`) rewrites any
-  // "opencode" id to "opencode-zen" before it ever reaches the active set —
-  // so an active no-auth opencode connection never appears as "opencode".
-  // Check both opencode-family canonical ids that catalog this model id.
+  // OpenCode Free (`opencode`) and OpenCode Zen (`opencode-zen`) are distinct
+  // canonical providers. Check both family members that catalog this model, while
+  // preserving whichever configured provider is actually active.
   if (modelId === "big-pickle" || modelId.endsWith("-free")) {
     const candidates = MODEL_TO_PROVIDERS.get(modelId) || [];
     const activeOpencodeCandidate = candidates.find(
@@ -649,7 +645,9 @@ async function resolveModelByProviderInference(modelId: string, extendedContext:
   // Canonicalize candidates (deduplicate alias providers pointing to the same provider ID)
   const canonicalCandidates = Array.from(
     new Set(
-      candidatesToUse.map((p) => resolveProviderAlias(p)).filter((p): p is string => p !== null)
+      candidatesToUse
+        .map((p) => resolveConfiguredProviderId(p))
+        .filter((p): p is string => p !== null)
     )
   );
 
