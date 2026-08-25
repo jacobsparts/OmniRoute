@@ -41,8 +41,8 @@ for (const [id, alias] of Object.entries(PROVIDER_ID_TO_ALIAS)) {
 // Manual alias overrides — maps slug-style prefixes to canonical provider IDs.
 // These live outside the registry because they represent multiple providers
 // or backward-compatible slug changes, not a single provider's display name.
-// opencode/ → opencode-zen; the distinct no-auth OpenCode Free provider uses the oc/ prefix.
-ALIAS_TO_PROVIDER_ID["opencode"] = "opencode-zen";
+// Fork policy: preserve the canonical OpenCode Free provider ID for opencode/.
+// ALIAS_TO_PROVIDER_ID["opencode"] = "opencode-zen";
 // xiaomi/ is the user-visible prefix for MiMo models; register it so
 // parseModel("xiaomi/mimo-v2-flash") resolves provider = "xiaomi-mimo" instead
 // of falling through to the identity fallback ("xiaomi").
@@ -204,9 +204,8 @@ export function resolveProviderAlias(aliasOrId: string | null | undefined): stri
 
 /**
  * Preserve canonical provider IDs from configuration and catalog storage while still accepting
- * aliases. Routing prefixes use resolveProviderAlias() directly because a prefix can deliberately
- * differ from a canonical ID (notably `opencode/` → `opencode-zen`, while canonical `opencode`
- * is the distinct no-auth OpenCode Free provider exposed publicly as `oc/`).
+ * aliases. Routing prefixes use resolveProviderAlias() directly; this fork also preserves
+ * `opencode` as the canonical OpenCode Free identity instead of remapping it to OpenCode Zen.
  */
 export function resolveConfiguredProviderId(aliasOrId: string | null | undefined): string | null {
   if (typeof aliasOrId !== "string") return null;
