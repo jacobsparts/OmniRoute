@@ -10,7 +10,7 @@
  *   - LKGPStrategy: tries last known good provider first
  */
 
-import type { ProviderCandidate, ScoredProvider } from "./scoring.ts";
+import type { ProviderCandidate, ScoredProvider, ScoringWeights } from "./scoring.ts";
 import { scorePool } from "./scoring.ts";
 import { getTaskFitness } from "./taskFitness.ts";
 import { clamp01 } from "../../utils/number.ts";
@@ -32,6 +32,8 @@ export interface RoutingContext {
   lastKnownGoodProvider?: string;
   lkgpEnabled?: boolean;
   sla?: SlaRoutingPolicy;
+  weights?: ScoringWeights;
+  explorationRate?: number;
 }
 
 export interface RoutingDecision {
@@ -104,6 +106,40 @@ class RulesStrategyImpl implements RouterStrategy {
       candidatesConsidered: ranked.length,
       finalScore: best.score,
       connectionId: best.connectionId,
+    };
+  }
+}
+
+// ── ScoreStrategy: configured score wins, with explicit exploration ──────────
+
+class ScoreStrategyImpl implements RouterStrategy {
+  readonly name = "score";
+  readonly description = "Selects the highest configured weighted score, with explicit exploration";
+
+  select(pool: ProviderCandidate[], context: RoutingContext): RoutingDecision {
+    const eligible = pool.filter((candidate) => candidate.circuitBreakerState !== "OPEN");
+    const ranked = scorePool(
+      eligible.length > 0 ? eligible : pool,
+      context.taskType,
+      context.weights,
+      getTaskFitness
+    );
+    if (ranked.length === 0) throw new Error("[ScoreStrategy] No candidates to score");
+
+    const explorationRate = Math.min(1, Math.max(0, context.explorationRate ?? 0));
+    const isExploration = Math.random() < explorationRate && ranked.length > 1;
+    const leaders = ranked.filter((candidate) => candidate.score === ranked[0].score);
+    const candidates = isExploration ? ranked : leaders;
+    const selected = candidates[Math.floor(Math.random() * candidates.length)];
+
+    return {
+      provider: selected.provider,
+      model: selected.model,
+      strategy: this.name,
+      reason: `ScoreStrategy: score=${selected.score.toFixed(3)}${isExploration ? " (exploration)" : ""}`,
+      candidatesConsidered: ranked.length,
+      finalScore: selected.score,
+      connectionId: selected.connectionId,
     };
   }
 }
@@ -337,12 +373,14 @@ class LKGPStrategyImpl implements RouterStrategy {
 const strategyRegistry = new Map<string, RouterStrategy>();
 
 const rulesStrategy = new RulesStrategyImpl();
+const scoreStrategy = new ScoreStrategyImpl();
 const costStrategy = new CostStrategyImpl();
 const latencyStrategy = new LatencyStrategyImpl();
 const slaStrategy = new SLAStrategyImpl();
 const lkgpStrategy = new LKGPStrategyImpl();
 
 strategyRegistry.set("rules", rulesStrategy);
+strategyRegistry.set("score", scoreStrategy);
 strategyRegistry.set("cost", costStrategy);
 strategyRegistry.set("eco", costStrategy); // alias
 strategyRegistry.set("latency", latencyStrategy);
