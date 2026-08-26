@@ -31,8 +31,8 @@ function registerModel(provider, model) {
 }
 
 describe("OpencodeExecutor", () => {
-  it("keeps the canonical opencode provider identity in the executor registry", () => {
-    assert.equal(getExecutor("opencode").provider, "opencode");
+  it("keeps the canonical opencode provider identity in the executor registry", async () => {
+    assert.equal((await getExecutor("opencode")).provider, "opencode");
   });
   let zenExecutor;
   let goExecutor;
