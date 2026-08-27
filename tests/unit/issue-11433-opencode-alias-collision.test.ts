@@ -8,21 +8,14 @@ import {
 } from "../../src/lib/combos/builderDraft.ts";
 import { resolveProviderAlias, parseModel } from "../../open-sse/services/model.ts";
 
-// Issue #11433: the combo builder's precision-select path builds a step's
-// `model` string as `${providerId}/${modelId}` using the CANONICAL provider id.
-// For the no-auth "opencode" (OpenCode Free) provider this produces
-// `model: "opencode/<modelId>"`, but `opencode` is ALSO a manual routing-prefix
-// override (`ALIAS_TO_PROVIDER_ID["opencode"] = "opencode-zen"`) intended only
-// for user-typed `opencode/` prefixes referring to the OpenCode Zen (api-key)
-// tier. Parsing the step's own `model` string therefore resolves to a
-// DIFFERENT provider than the one recorded in `step.providerId`.
+// Issue #11433: upstream's combo builder serialized a selected target from its
+// canonical provider id instead of the selected routing prefix. This fork also
+// preserves the canonical `opencode` identity, but retaining the selected `oc`
+// prefix remains necessary for exact builder round-tripping and compatibility
+// with upstream routing semantics.
 
-test('sanity: resolveProviderAlias("opencode") is the manual override causing the collision', () => {
-  // Documents the root cause directly: the manual alias override in
-  // open-sse/services/model.ts unconditionally rewrites "opencode" to
-  // "opencode-zen", even though "opencode" is also a registered canonical
-  // provider id (src/shared/constants/providers/noauth.ts).
-  assert.equal(resolveProviderAlias("opencode"), "opencode-zen");
+test('fork contract: resolveProviderAlias("opencode") preserves OpenCode Free identity', () => {
+  assert.equal(resolveProviderAlias("opencode"), "opencode");
 });
 
 test("issue #11433 fix: buildPrecisionComboModelStep honors an explicit modelPrefix override", () => {
