@@ -11,37 +11,64 @@ import {
 
 // ── resolveUniversalHandoffConfig ────────────────────────────────────────────
 
-test("resolveUniversalHandoffConfig returns disabled defaults when no config", () => {
-  const r = resolveUniversalHandoffConfig(null, null);
-  assert.strictEqual(r.enabled, true);
+function withUniversalHandoffEnabled<T>(run: () => T): T {
+  const previous = process.env.UNIVERSAL_CONTEXT_HANDOFF_ENABLED;
+  process.env.UNIVERSAL_CONTEXT_HANDOFF_ENABLED = "true";
+  try {
+    return run();
+  } finally {
+    if (previous === undefined) {
+      delete process.env.UNIVERSAL_CONTEXT_HANDOFF_ENABLED;
+    } else {
+      process.env.UNIVERSAL_CONTEXT_HANDOFF_ENABLED = previous;
+    }
+  }
+}
+
+test("global feature flag disables handoff by default for every combo", () => {
+  const r = resolveUniversalHandoffConfig({ enabled: true }, { enabled: true });
+  assert.strictEqual(r.enabled, false);
   assert.strictEqual(r.trigger, "on-switch");
   assert.strictEqual(r.ttlMinutes, 300);
   assert.strictEqual(r.maxMessagesForSummary, 30);
   assert.strictEqual(r.preserveSystemPrompt, true);
 });
 
+test("global feature flag can explicitly enable handoff", () => {
+  withUniversalHandoffEnabled(() => {
+    const r = resolveUniversalHandoffConfig({ enabled: true }, { enabled: true });
+    assert.strictEqual(r.enabled, true);
+  });
+});
+
 test("applies combo-level config over defaults", () => {
-  const r = resolveUniversalHandoffConfig(
-    { enabled: true, trigger: "always", ttlMinutes: 60 } as any,
-    null
-  );
-  assert.strictEqual(r.enabled, true);
-  assert.strictEqual(r.trigger, "always");
-  assert.strictEqual(r.ttlMinutes, 60);
+  withUniversalHandoffEnabled(() => {
+    const r = resolveUniversalHandoffConfig(
+      { enabled: true, trigger: "always", ttlMinutes: 60 } as any,
+      null
+    );
+    assert.strictEqual(r.enabled, true);
+    assert.strictEqual(r.trigger, "always");
+    assert.strictEqual(r.ttlMinutes, 60);
+  });
 });
 
 test("applies global-level config when combo not set", () => {
-  const r = resolveUniversalHandoffConfig(null, {
-    enabled: true,
-    maxMessagesForSummary: 15,
-  } as any);
-  assert.strictEqual(r.enabled, true);
-  assert.strictEqual(r.maxMessagesForSummary, 15);
+  withUniversalHandoffEnabled(() => {
+    const r = resolveUniversalHandoffConfig(null, {
+      enabled: true,
+      maxMessagesForSummary: 15,
+    } as any);
+    assert.strictEqual(r.enabled, true);
+    assert.strictEqual(r.maxMessagesForSummary, 15);
+  });
 });
 
 test("gives combo priority over global", () => {
-  const r = resolveUniversalHandoffConfig({ enabled: true } as any, { enabled: false } as any);
-  assert.strictEqual(r.enabled, true);
+  withUniversalHandoffEnabled(() => {
+    const r = resolveUniversalHandoffConfig({ enabled: true } as any, { enabled: false } as any);
+    assert.strictEqual(r.enabled, true);
+  });
 });
 
 test("invalid trigger defaults to on-switch", () => {
