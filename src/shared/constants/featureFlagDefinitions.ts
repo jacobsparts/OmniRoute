@@ -317,7 +317,7 @@ export const FEATURE_FLAG_DEFINITIONS: FeatureFlagDefinition[] = [
       "Generate and inject conversation summaries when combo routing switches models. Disable to treat model switches independently and prevent background handoff requests for all existing and future combos.",
     descriptionI18nKey: "featureFlagUniversalContextHandoffEnabledDescription",
     category: "runtime",
-    defaultValue: "false",
+    defaultValue: "true",
     type: "boolean",
     requiresRestart: false,
     warningLevel: "info",

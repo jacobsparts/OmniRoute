@@ -25,20 +25,28 @@ function withUniversalHandoffEnabled<T>(run: () => T): T {
   }
 }
 
-test("global feature flag disables handoff by default for every combo", () => {
+test("global feature flag preserves enabled upstream behavior by default", () => {
   const r = resolveUniversalHandoffConfig({ enabled: true }, { enabled: true });
-  assert.strictEqual(r.enabled, false);
+  assert.strictEqual(r.enabled, true);
   assert.strictEqual(r.trigger, "on-switch");
   assert.strictEqual(r.ttlMinutes, 300);
   assert.strictEqual(r.maxMessagesForSummary, 30);
   assert.strictEqual(r.preserveSystemPrompt, true);
 });
 
-test("global feature flag can explicitly enable handoff", () => {
-  withUniversalHandoffEnabled(() => {
+test("global feature flag can explicitly disable handoff for every combo", () => {
+  const previous = process.env.UNIVERSAL_CONTEXT_HANDOFF_ENABLED;
+  process.env.UNIVERSAL_CONTEXT_HANDOFF_ENABLED = "false";
+  try {
     const r = resolveUniversalHandoffConfig({ enabled: true }, { enabled: true });
-    assert.strictEqual(r.enabled, true);
-  });
+    assert.strictEqual(r.enabled, false);
+  } finally {
+    if (previous === undefined) {
+      delete process.env.UNIVERSAL_CONTEXT_HANDOFF_ENABLED;
+    } else {
+      process.env.UNIVERSAL_CONTEXT_HANDOFF_ENABLED = previous;
+    }
+  }
 });
 
 test("applies combo-level config over defaults", () => {
