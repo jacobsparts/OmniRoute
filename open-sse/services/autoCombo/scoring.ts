@@ -156,7 +156,7 @@ export function calculateScore(factors: ScoringFactors, weights: ScoringWeights)
       weights.latencyInv * factors.latencyInv +
       weights.taskFit * factors.taskFit +
       weights.stability * factors.stability +
-      (weights.executionSuccess ?? 0) * (factors.executionSuccess ?? 0.95) +
+      (weights.executionSuccess ?? 0) * (factors.executionSuccess ?? 1) +
       weights.tierPriority * factors.tierPriority +
       (weights.tierAffinity ?? 0) * factors.tierAffinity +
       (weights.specificityMatch ?? 0) * factors.specificityMatch +
@@ -286,7 +286,7 @@ export function calculateFactors(
     latencyInv: clamp01(1 - candidate.p95LatencyMs / maxLatency),
     taskFit: clamp01(getTaskFitness(candidate.model, taskType)),
     stability: clamp01(1 - candidate.latencyStdDev / maxStdDev),
-    executionSuccess: clamp01(candidate.executionSuccess ?? 0.95),
+    executionSuccess: clamp01(candidate.executionSuccess ?? 1),
     tierPriority: calculateTierScore(candidate.accountTier, candidate.quotaResetIntervalSecs),
     tierAffinity: calculateTierAffinity(candidate, manifestHint),
     specificityMatch: calculateSpecificityMatch(candidate, manifestHint),

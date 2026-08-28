@@ -127,6 +127,7 @@ test("candidate evaluation is deterministic and does not mutate builder-owned ca
   assert.deepEqual(candidates, before);
   assert.notEqual(first.candidates[0], candidates[0]);
   assert.equal(first.scoredTargets[0].factors.quota, 0.8);
+  assert.equal(first.scoredTargets[0].factors.executionSuccess, 1);
 });
 
 test("cache affinity scores expanded auto account candidates directly", async () => {
