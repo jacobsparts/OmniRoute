@@ -300,6 +300,30 @@ test("pricing helpers resolve aliased providers and tolerate no-op resets", asyn
   assert.equal(afterUnknownReset["missing-provider"], undefined);
 });
 
+test("pricing lookup falls back to a unique model resource suffix", async () => {
+  await settingsDb.updatePricing({
+    "resource-provider": {
+      "accounts/example/models/model-a": { prompt: 2 },
+    },
+    "ambiguous-provider": {
+      "accounts/one/models/model-a": { prompt: 3 },
+      "accounts/two/models/model-a": { prompt: 4 },
+    },
+    "exact-provider": {
+      "model-a": { prompt: 5 },
+      "accounts/example/models/model-a": { prompt: 6 },
+    },
+  });
+
+  assert.deepEqual(await settingsDb.getPricingForModel("resource-provider", "model-a"), {
+    prompt: 2,
+  });
+  assert.equal(await settingsDb.getPricingForModel("ambiguous-provider", "model-a"), null);
+  assert.deepEqual(await settingsDb.getPricingForModel("exact-provider", "model-a"), {
+    prompt: 5,
+  });
+});
+
 test("settings and pricing readers skip malformed rows while merging surviving layers", async () => {
   const db = core.getDbInstance();
   const originalPrepare = db.prepare.bind(db);

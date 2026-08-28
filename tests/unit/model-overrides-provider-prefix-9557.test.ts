@@ -510,6 +510,28 @@ describe("issue #9557: model overrides expose configured provider prefix, not no
     );
   });
 
+  it("pricing lookup falls back from a compatible node id to its public prefix", async () => {
+    await seedNodeWithSyncedModel("priced-model");
+    const { updatePricing, getPricingForModel } =
+      await import("../../src/lib/db/settings/pricing.ts");
+    await updatePricing({
+      [NODE_PREFIX]: { "priced-model": { input: 0, output: 0 } },
+    });
+
+    assert.deepEqual(await getPricingForModel(NODE_ID, "priced-model"), {
+      input: 0,
+      output: 0,
+    });
+
+    await updatePricing({
+      [NODE_ID]: { "priced-model": { input: 9, output: 9 } },
+    });
+    assert.deepEqual(await getPricingForModel(NODE_ID, "priced-model"), {
+      input: 9,
+      output: 9,
+    });
+  });
+
   it("no-prefix fallback and built-in providers keep raw internal id / unchanged behavior", async () => {
     // Node with no prefix → target falls back to internal node id.
     const noPrefixNodeId = "openai-compatible-chat-aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";

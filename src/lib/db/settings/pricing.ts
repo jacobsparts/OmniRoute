@@ -6,6 +6,7 @@ import { getDbInstance } from "../core";
 import { backupDbFile } from "../backup";
 import { invalidateDbCache } from "../readCache";
 import { PROVIDER_ID_TO_ALIAS } from "@omniroute/open-sse/config/providerModels.ts";
+import { getProviderPrefixIndex } from "@/lib/providerNodePrefixes";
 import { type JsonRecord, toRecord } from "./shared";
 
 type PricingModels = Record<string, JsonRecord>;
@@ -135,41 +136,55 @@ export async function getPricingForModel(provider: string, model: string) {
     return undefined;
   };
 
+  const providers = [provider];
+  const addProvider = (candidate: string | undefined) => {
+    if (candidate && !providers.some((value) => value.toLowerCase() === candidate.toLowerCase())) {
+      providers.push(candidate);
+    }
+  };
   const pLower = (provider || "").toLowerCase();
-  let providerPricing = findKeyInsensitive<PricingModels>(pricing, pLower);
 
-  if (!providerPricing) {
-    const alias = findKeyInsensitive<string>(PROVIDER_ID_TO_ALIAS, pLower);
-    if (alias) providerPricing = findKeyInsensitive(pricing, alias);
+  addProvider(findKeyInsensitive<string>(PROVIDER_ID_TO_ALIAS, pLower));
+  for (const [id, alias] of Object.entries(PROVIDER_ID_TO_ALIAS)) {
+    if (typeof alias === "string" && alias.toLowerCase() === pLower) addProvider(id);
   }
+  const withoutRegion = pLower.replace(/-cn$/, "");
+  if (withoutRegion !== pLower) addProvider(withoutRegion);
 
-  if (!providerPricing) {
-    for (const [id, mappedAlias] of Object.entries(PROVIDER_ID_TO_ALIAS)) {
-      if (typeof mappedAlias === "string" && mappedAlias.toLowerCase() === pLower) {
-        providerPricing = findKeyInsensitive(pricing, id);
-        if (providerPricing) break;
+  const models = [model, model.replace(/\./g, "-")];
+  const findModel = () => {
+    for (const providerCandidate of providers) {
+      const providerPricing = findKeyInsensitive<PricingModels>(pricing, providerCandidate);
+      if (!providerPricing) continue;
+      for (const modelCandidate of models) {
+        const resolved = findKeyInsensitive<JsonRecord>(providerPricing, modelCandidate);
+        if (resolved) return resolved;
       }
     }
+  };
+
+  const exact = findModel();
+  if (exact) return exact;
+
+  const { nodeToPrefix, prefixToNode } = await getProviderPrefixIndex();
+  addProvider(nodeToPrefix.get(provider));
+  addProvider(prefixToNode.get(provider));
+
+  const prefixed = findModel();
+  if (prefixed) return prefixed;
+
+  const modelSuffix = model.toLowerCase().split("/").pop();
+  if (!modelSuffix) return null;
+  for (const providerCandidate of providers) {
+    const providerPricing = findKeyInsensitive<PricingModels>(pricing, providerCandidate);
+    if (!providerPricing) continue;
+    const matches = Object.entries(providerPricing).filter(
+      ([key]) => key.toLowerCase().split("/").pop() === modelSuffix
+    );
+    if (matches.length === 1) return matches[0][1];
   }
 
-  if (!providerPricing) {
-    const np = pLower.replace(/-cn$/, "");
-    if (np && np !== pLower) {
-      providerPricing = findKeyInsensitive(pricing, np);
-    }
-  }
-
-  if (!providerPricing) return null;
-
-  const mLower = (model || "").toLowerCase();
-  let modelPricing = findKeyInsensitive<JsonRecord>(providerPricing, mLower);
-
-  if (!modelPricing) {
-    const hyphenModel = mLower.replace(/\./g, "-");
-    modelPricing = findKeyInsensitive(providerPricing, hyphenModel);
-  }
-
-  return modelPricing || null;
+  return null;
 }
 
 export async function updatePricing(pricingData: PricingByProvider) {
