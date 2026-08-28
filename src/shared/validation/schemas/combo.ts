@@ -83,6 +83,7 @@ export const scoringWeightsSchema = z
     latencyInv: z.number().min(0).max(1),
     taskFit: z.number().min(0).max(1),
     stability: z.number().min(0).max(1),
+    executionSuccess: z.number().min(0).max(1).optional().default(0),
     tierPriority: z.number().min(0).max(1).optional().default(0.05),
     tierAffinity: z.number().min(0).max(1).optional().default(0.05),
     specificityMatch: z.number().min(0).max(1).optional().default(0.05),

@@ -15,6 +15,7 @@ export interface ScoringFactors {
   latencyInv: number;
   taskFit: number;
   stability: number;
+  executionSuccess?: number;
   tierPriority: number;
   tierAffinity: number;
   specificityMatch: number;
@@ -38,6 +39,7 @@ export interface ScoringWeights {
   latencyInv: number;
   taskFit: number;
   stability: number;
+  executionSuccess?: number;
   tierPriority: number;
   tierAffinity: number;
   specificityMatch: number;
@@ -57,6 +59,7 @@ export const DEFAULT_WEIGHTS: ScoringWeights = {
   latencyInv: 0.1143,
   taskFit: 0.0762,
   stability: 0.0476,
+  executionSuccess: 0,
   tierPriority: 0.0476,
   tierAffinity: 0.0476,
   specificityMatch: 0.0476,
@@ -108,6 +111,7 @@ export interface ProviderCandidate {
   errorRate: number;
   /** Optional provider/model observed failure rate. Falls back to errorRate. */
   failureRate?: number;
+  executionSuccess?: number;
   /** T10: Optional account tier for priority boosting (Ultra > Pro > Free) */
   accountTier?: "ultra" | "pro" | "standard" | "free";
   /** T10: Optional quota reset interval in seconds (shorter = higher priority when same quota) */
@@ -152,6 +156,7 @@ export function calculateScore(factors: ScoringFactors, weights: ScoringWeights)
       weights.latencyInv * factors.latencyInv +
       weights.taskFit * factors.taskFit +
       weights.stability * factors.stability +
+      (weights.executionSuccess ?? 0) * (factors.executionSuccess ?? 0.95) +
       weights.tierPriority * factors.tierPriority +
       (weights.tierAffinity ?? 0) * factors.tierAffinity +
       (weights.specificityMatch ?? 0) * factors.specificityMatch +
@@ -281,6 +286,7 @@ export function calculateFactors(
     latencyInv: clamp01(1 - candidate.p95LatencyMs / maxLatency),
     taskFit: clamp01(getTaskFitness(candidate.model, taskType)),
     stability: clamp01(1 - candidate.latencyStdDev / maxStdDev),
+    executionSuccess: clamp01(candidate.executionSuccess ?? 0.95),
     tierPriority: calculateTierScore(candidate.accountTier, candidate.quotaResetIntervalSecs),
     tierAffinity: calculateTierAffinity(candidate, manifestHint),
     specificityMatch: calculateSpecificityMatch(candidate, manifestHint),

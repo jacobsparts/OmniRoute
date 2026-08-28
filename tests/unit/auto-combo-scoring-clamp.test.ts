@@ -56,6 +56,15 @@ function candidate(partial: Partial<ProviderCandidate> = {}): ProviderCandidate 
   };
 }
 
+test("execution success is opt-in", () => {
+  const low = { ...ONES, executionSuccess: 0.5 };
+  assert.equal(
+    calculateScore(low, { ...DEFAULT_WEIGHTS, executionSuccess: 0 }),
+    calculateScore(ONES, DEFAULT_WEIGHTS)
+  );
+  assert.equal(calculateScore(low, normalizeScoringWeights({ executionSuccess: 1 })), 0.5);
+});
+
 test("calculateScore — NaN factor yields a finite [0,1] score (no NaN propagation)", () => {
   const score = calculateScore({ ...ONES, quota: NaN }, DEFAULT_WEIGHTS);
   assert.ok(Number.isFinite(score), "score must be finite even with a NaN factor");

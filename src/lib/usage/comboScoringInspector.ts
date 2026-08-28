@@ -82,6 +82,7 @@ const FACTOR_KEYS: ComboScoringInspectorFactorKey[] = [
   "latencyInv",
   "taskFit",
   "stability",
+  "executionSuccess",
   "tierPriority",
   "tierAffinity",
   "specificityMatch",
