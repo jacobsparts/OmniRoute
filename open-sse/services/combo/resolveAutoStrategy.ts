@@ -128,7 +128,7 @@ export async function evaluateAutoCandidates(options: EvaluateAutoCandidatesOpti
     ...candidate,
     executionSuccess: (() => {
       const value = executionSuccess.get(candidate.executionKey);
-      return value ? (value.ok + 9.5) / (value.total + 10) : 0.95;
+      return value ? (value.ok + 10) / (value.total + 10) : 1;
     })(),
     cacheAffinity: cacheAffinityScores.get(promptCacheTargetIdentity(candidate)) ?? 0,
   }));
