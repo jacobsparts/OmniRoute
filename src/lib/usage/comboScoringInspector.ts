@@ -440,7 +440,12 @@ async function buildInspectorCombo(
     score: number;
   }>;
 
-  if (combo.strategy === "auto" && configuredCombo?.name && Array.isArray(configuredCombo.models)) {
+  if (
+    combo.strategy === "auto" &&
+    configuredCombo?.name &&
+    Array.isArray(configuredCombo.models) &&
+    configuredCombo.models.length > 0
+  ) {
     const comboLike = configuredCombo as ComboLike;
     const resolvedTargets = resolveComboTargets(comboLike, configuredCombos as ComboLike[]);
     const { resetWindowConfig } = parseAutoConfig(comboLike, resolvedTargets);
@@ -453,10 +458,11 @@ async function buildInspectorCombo(
       resetWindowConfig,
       buildAutoCandidates,
     });
+    const candidatesByExecutionKey = new Map(
+      evaluation.routableCandidates.map((candidate) => [candidate.executionKey, candidate])
+    );
     scored = evaluation.scoredTargets.map((item) => {
-      const candidate = evaluation.routableCandidates.find(
-        (entry) => entry.executionKey === item.target.executionKey
-      );
+      const candidate = candidatesByExecutionKey.get(item.target.executionKey);
       if (!candidate)
         throw new Error(`Missing evaluated candidate for ${item.target.executionKey}`);
       const historicalTarget = targets.find(

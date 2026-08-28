@@ -304,6 +304,65 @@ test("configured auto preview uses live evaluation scores and zero quota contrib
   }
 });
 
+test("configured auto preview with no model steps preserves health-derived targets", async () => {
+  const combo = await combosDb.createCombo({
+    name: "combo-scoring-empty-auto",
+    strategy: "auto",
+    models: [],
+  });
+  const target = {
+    executionKey: "health-only-target",
+    stepId: "health-only-target",
+    model: "openai/gpt-4o-mini",
+    provider: "openai",
+    connectionId: null,
+    label: "Health-only target",
+    requests: 1,
+    successRate: 100,
+    avgLatencyMs: 100,
+    lastStatus: 200,
+    lastUsedAt: new Date().toISOString(),
+    quotaRemainingPct: 100,
+    quotaIsExhausted: false,
+    quotaTrend: null,
+    quotaScope: "provider" as const,
+  };
+
+  const response = await inspector.buildComboScoringInspectorResponse({
+    range: "24h",
+    horizon: "7d",
+    comboId: String(combo.id),
+    combos: [combo],
+    skipAutopilot: true,
+    healthResponse: {
+      timeRange: "24h",
+      combos: [
+        {
+          comboId: String(combo.id),
+          comboName: combo.name,
+          strategy: "auto",
+          models: [],
+          cost: { totalUsd: 0, avgPerRequestUsd: 0, byModel: [] },
+          quotaHealth: { providers: [], worstRemainingPct: 100 },
+          usageSkew: { modelDistribution: [], giniCoefficient: 0 },
+          performance: { avgLatencyMs: 100, successRate: 100, totalRequests: 1 },
+          targetHealth: [target],
+        },
+      ],
+    },
+    forecastResponse: {
+      asOf: new Date().toISOString(),
+      timeRange: "24h",
+      horizon: "7d",
+      method: "linear_history",
+      combos: [],
+    },
+  });
+
+  assert.equal(response.combos[0].targets.length, 1);
+  assert.equal(response.combos[0].targets[0].executionKey, target.executionKey);
+});
+
 test("scoring inspector normalizes partial explicit auto weights like runtime", async () => {
   const explicitWeights = {
     quota: 0.3,
