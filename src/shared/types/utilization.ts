@@ -280,6 +280,7 @@ export type ComboScoringInspectorFactorKey =
   | "latencyInv"
   | "taskFit"
   | "stability"
+  | "executionSuccess"
   | "tierPriority"
   | "tierAffinity"
   | "specificityMatch"

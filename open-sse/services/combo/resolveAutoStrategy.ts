@@ -19,6 +19,7 @@ import { classifyWithConfig } from "../intentClassifier.ts";
 import type { RoutingHint } from "../manifestAdapter";
 import { parseModel } from "../model.ts";
 import { supportsToolCalling } from "../modelCapabilities.ts";
+import { getComboForecastUsageRows } from "../../../src/lib/db/comboForecast";
 import type { ResilienceSettings } from "../../../src/lib/resilience/settings";
 import { parseAutoConfig } from "./autoConfig.ts";
 import { dedupeTargetsByExecutionKey } from "./comboData.ts";
@@ -105,6 +106,19 @@ export async function evaluateAutoCandidates(options: EvaluateAutoCandidatesOpti
     options.resetWindowConfig,
     options.resilienceSettings
   );
+  const executionSuccess = new Map<string, { ok: number; total: number }>();
+  if ((options.weights.executionSuccess ?? 0) > 0) {
+    for (const row of getComboForecastUsageRows({
+      comboName: options.comboName,
+      since: new Date(Date.now() - 86_400_000).toISOString(),
+    })) {
+      if (!row.executionKey) continue;
+      const value = executionSuccess.get(row.executionKey) ?? { ok: 0, total: 0 };
+      value.ok += row.successCount;
+      value.total += row.requests;
+      executionSuccess.set(row.executionKey, value);
+    }
+  }
   const cacheAffinityScores = calculatePromptCacheAffinityScores(
     builtCandidates,
     options.body,
@@ -112,6 +126,10 @@ export async function evaluateAutoCandidates(options: EvaluateAutoCandidatesOpti
   );
   const candidates = builtCandidates.map((candidate) => ({
     ...candidate,
+    executionSuccess: (() => {
+      const value = executionSuccess.get(candidate.executionKey);
+      return value ? (value.ok + 9.5) / (value.total + 10) : 0.95;
+    })(),
     cacheAffinity: cacheAffinityScores.get(promptCacheTargetIdentity(candidate)) ?? 0,
   }));
   const routableCandidates = candidates.filter(

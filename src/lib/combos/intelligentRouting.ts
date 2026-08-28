@@ -12,6 +12,7 @@ export type IntelligentRoutingWeights = {
   latencyInv: number;
   taskFit: number;
   stability: number;
+  executionSuccess: number;
   tierPriority: number;
   tierAffinity: number;
   specificityMatch: number;
@@ -97,6 +98,7 @@ export const FACTOR_LABELS: Record<keyof IntelligentRoutingWeights, string> = {
   latencyInv: "Latency",
   taskFit: "Task Fit",
   stability: "Stability",
+  executionSuccess: "Execution Success",
   tierPriority: "Tier",
   tierAffinity: "Tier Affinity",
   specificityMatch: "Specificity",
@@ -172,6 +174,7 @@ export function normalizeIntelligentRoutingConfig(config: unknown): IntelligentR
       latencyInv: toFiniteNumber(rawWeights.latencyInv) ?? DEFAULT_INTELLIGENT_WEIGHTS.latencyInv,
       taskFit: toFiniteNumber(rawWeights.taskFit) ?? DEFAULT_INTELLIGENT_WEIGHTS.taskFit,
       stability: toFiniteNumber(rawWeights.stability) ?? DEFAULT_INTELLIGENT_WEIGHTS.stability,
+      executionSuccess: toFiniteNumber(rawWeights.executionSuccess) ?? 0,
       tierPriority:
         toFiniteNumber(rawWeights.tierPriority) ?? DEFAULT_INTELLIGENT_WEIGHTS.tierPriority,
       tierAffinity:
