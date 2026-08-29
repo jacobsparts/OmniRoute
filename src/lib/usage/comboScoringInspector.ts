@@ -329,6 +329,7 @@ function buildLiveCandidateContext(
   const context = buildCandidate(target, forecastTarget).context;
   for (const key of FACTOR_KEYS) context.sources[key] = "runtime";
   context.notes.quota = "Current credential-level quota from live candidate evaluation.";
+  context.notes.costInv = "Current model pricing from live candidate evaluation.";
   context.notes.latencyInv = "Current credential-level latency from live candidate evaluation.";
   context.notes.stability = "Current credential-level stability from live candidate evaluation.";
   context.notes.contextAffinity = "Live candidate affinity evaluated without a preview session.";
