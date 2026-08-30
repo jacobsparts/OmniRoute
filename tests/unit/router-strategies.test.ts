@@ -56,6 +56,12 @@ test("score — exploits the configured winner and uses explorationRate", (t) =>
   );
 });
 
+test("score — exact ties preserve configured candidate order", () => {
+  const pool = [cand({ provider: "first" }), cand({ provider: "second" })];
+
+  assert.equal(getStrategy("score").select(pool, { ...ctx, explorationRate: 0 }).provider, "first");
+});
+
 // ── cost ─────────────────────────────────────────────────────────────────────
 test("cost — selects the cheapest healthy candidate", () => {
   const pool = [
@@ -330,17 +336,8 @@ test("selectWithStrategy — unknown strategy silently falls back to rules", () 
 
 test("listStrategies — exposes every registered strategy + aliases", () => {
   const names = listStrategies().map((s) => s.name);
-  for (const n of [
-    "rules",
-    "score",
-    "cost",
-    "eco",
-    "latency",
-    "fast",
-    "sla-aware",
-    "sla",
-    "lkgp",
-  ]) {
+  assert.ok(names.includes("score"), "listStrategies missing 'score'");
+  for (const n of ["rules", "cost", "eco", "latency", "fast", "sla-aware", "sla", "lkgp"]) {
     assert.ok(names.includes(n), `listStrategies missing '${n}'`);
   }
 });

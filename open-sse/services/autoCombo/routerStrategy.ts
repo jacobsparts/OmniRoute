@@ -4,6 +4,7 @@
  * Inspired by ClawRouter commit 14c83c258 "refactor: extract routing into pluggable RouterStrategy system".
  * Provides a RouterStrategy interface and built-in implementations:
  *   - RulesStrategy (default): wraps the existing 15-factor scoring engine
+ *   - ScoreStrategy: highest configured weighted score, with explicit exploration
  *   - CostStrategy: always picks cheapest available model
  *   - LatencyStrategy: prioritizes low p95 latency with reliability weighting
  *   - SLAStrategy: prefers candidates that satisfy latency/error/cost SLOs
@@ -128,9 +129,7 @@ class ScoreStrategyImpl implements RouterStrategy {
 
     const explorationRate = Math.min(1, Math.max(0, context.explorationRate ?? 0));
     const isExploration = Math.random() < explorationRate && ranked.length > 1;
-    const leaders = ranked.filter((candidate) => candidate.score === ranked[0].score);
-    const candidates = isExploration ? ranked : leaders;
-    const selected = candidates[Math.floor(Math.random() * candidates.length)];
+    const selected = isExploration ? ranked[Math.floor(Math.random() * ranked.length)] : ranked[0];
 
     return {
       provider: selected.provider,
