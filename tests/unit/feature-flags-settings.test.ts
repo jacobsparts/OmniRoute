@@ -35,7 +35,9 @@ const {
 // The codex-app-server work then added OMNIROUTE_CODEX_APP_SERVER_ENABLED
 // (feature flag gating the opt-in Codex app-server WebSocket transport),
 // bumping it from 51 to 52.
-const EXPECTED_FEATURE_FLAG_COUNT = 52;
+// UNIVERSAL_CONTEXT_HANDOFF_ENABLED bumped it from 52 to 53.
+// REASONING_REPLAY_ENABLED bumped it from 53 to 54.
+const EXPECTED_FEATURE_FLAG_COUNT = 54;
 
 // ──────────────────────────────────────────────────────
 // Test group 1 — Flag definitions registry
