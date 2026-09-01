@@ -327,7 +327,7 @@ export const FEATURE_FLAG_DEFINITIONS: FeatureFlagDefinition[] = [
     label: "Reasoning Replay",
     description:
       "Preserve and replay model reasoning for multi-turn tool calling flows. Disable to stop storing and re-injecting reasoning.",
-    descriptionI18nKey: "reasoningCacheDesc",
+    descriptionI18nKey: "featureFlagReasoningReplayEnabledDescription",
     category: "runtime",
     defaultValue: "true",
     type: "boolean",
