@@ -16,6 +16,14 @@ export { resolveCanonicalProviderModel } from "./modelCanonicalization.ts";
 // parseModel() sits on the per-request hot path (combo scoring, chatCore).
 const log = logger("MODEL");
 
+export function resolveConfiguredProviderId(aliasOrId: string | null | undefined): string | null {
+  if (typeof aliasOrId !== "string") return null;
+  if (aliasOrId in PROVIDER_ID_TO_ALIAS) return aliasOrId;
+  return resolveProviderAlias(aliasOrId);
+}
+
+type ProviderModelAliasMap = Record<string, Record<string, string>>;
+
 type ModelAliasValue = string | { provider?: string; model?: string };
 type ModelAliasMap = Record<string, ModelAliasValue>;
 type ParsedModel = {
