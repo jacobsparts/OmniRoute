@@ -482,8 +482,8 @@
     },
     "opencode": {
       "className": "OpencodeExecutor",
-      "configSource": "opencode-zen",
-      "provider": "opencode-zen"
+      "configSource": "opencode",
+      "provider": "opencode"
     },
     "opencode-go": {
       "className": "OpencodeExecutor",
