@@ -9,7 +9,7 @@
 import {
   getRuntimeProviderProfile,
   isAccountSemaphoreFull,
-  isModelLocked,
+  getModelLockoutInfo,
 } from "../accountFallback.ts";
 import { isProviderInCooldown } from "../providerCooldownTracker.ts";
 import { checkCredentialGate, logCredentialSkip } from "../credentialGate.ts";
@@ -255,7 +255,18 @@ export async function evaluateExecuteTargetGates(opts: {
     };
   }
 
-  if (provider && rawModel && isModelLocked(provider, target.connectionId || "", rawModel)) {
+  const canonicalLockoutProvider = parseModel(modelStr).provider || provider;
+  const modelLockout =
+    canonicalLockoutProvider && rawModel
+      ? getModelLockoutInfo(canonicalLockoutProvider, target.connectionId || "", rawModel)
+      : null;
+  if (modelLockout && modelLockout.remainingMs > 0) {
+    const lockoutRetryAfter = new Date(Date.now() + modelLockout.remainingMs);
+    if (!state.earliestRetryAfter || lockoutRetryAfter < new Date(state.earliestRetryAfter)) {
+      state.earliestRetryAfter = lockoutRetryAfter;
+    }
+    state.lastStatus ??= 429;
+    state.lastError ??= `Model ${modelStr} is locked`;
     deps.log.info("COMBO", `Skipping ${modelStr} — model locked by resilience (cooldown active)`);
     recordComboDecision(deps.traceInvocationId, {
       step: target.executionKey,

@@ -653,9 +653,10 @@ export async function dispatchWithCooldownRetry(opts: {
           // state.orderedTargets[0] behavior), but heterogeneous combos carry a
           // different model per target.
           lookupLock: (provider, connectionId, target) => {
-            const rawModel = parseModel(target?.modelStr ?? "").model || "";
+            const parsed = parseModel(target?.modelStr ?? "");
+            const rawModel = parsed.model || "";
             if (!rawModel) return null;
-            return getModelLockoutInfo(provider, connectionId, rawModel);
+            return getModelLockoutInfo(parsed.provider || provider, connectionId, rawModel);
           },
           computeWaitMs: (retryAfter) => computeClosestRetryAfter(retryAfter).waitMs,
         });

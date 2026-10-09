@@ -1086,7 +1086,11 @@ export async function executeTargetAttempt(opts: {
         !protectedPriorityTarget &&
         provider &&
         rawModel &&
-        isModelLocked(provider, targetWithConnection.connectionId || "", rawModel)
+        isModelLocked(
+          parseModel(modelStr).provider || provider,
+          targetWithConnection.connectionId || "",
+          rawModel
+        )
       ) {
         deps.log.info("COMBO", `Skipping retry for ${modelStr} — model lockout active`);
         // Live incident (log id 1784457764961-73): earliestRetryAfter is already

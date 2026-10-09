@@ -313,6 +313,56 @@ function reconcileLimitersWithOverrides(): void {
   }
 }
 
+function clearLimiterPauseTimer(key: string): void {
+  const timer = limiterPauseTimers.get(key);
+  if (!timer) return;
+  clearTimeout(timer);
+  limiterPauseTimers.delete(key);
+}
+
+function clearLimiterPauseTimers(connectionId?: string): void {
+  for (const key of Array.from(limiterPauseTimers.keys())) {
+    if (connectionId === undefined || key.includes(connectionId)) {
+      clearLimiterPauseTimer(key);
+    }
+  }
+}
+
+function pauseLimiterUntil(
+  provider: string,
+  connectionId: string,
+  model: string | null,
+  limiter: Bottleneck,
+  retryAfterMs: number
+): void {
+  const key = getLimiterKey(provider, connectionId, model);
+  clearLimiterPauseTimer(key);
+  updateLimiterSettings(limiter, {
+    reservoir: 0,
+    reservoirRefreshAmount: null,
+    reservoirRefreshInterval: null,
+  });
+
+  const releaseTimer = setTimeout(() => {
+    limiterPauseTimers.delete(key);
+    if (limiters.get(key) !== limiter) return;
+
+    const defaults = buildLimiterDefaults();
+    const overrides = connectionRateLimitOverrides.get(connectionId);
+    const resumeRpm = resolveRpm(overrides?.rpm ?? defaults.reservoir);
+    const release = limiter.incrementReservoir(resumeRpm).then(() => {
+      if (limiters.get(key) !== limiter) return;
+      updateLimiterSettings(limiter, {
+        reservoirRefreshAmount: resumeRpm,
+        reservoirRefreshInterval: 60 * 1000,
+      });
+    });
+    trackAsyncOperation(release);
+  }, retryAfterMs);
+  releaseTimer.unref?.();
+  limiterPauseTimers.set(key, releaseTimer);
+}
+
 function clearPreservedReplacementSettings(connectionId: string): void {
   for (const key of preservedReplacementSettings.keys()) {
     if (key.includes(connectionId)) preservedReplacementSettings.delete(key);
@@ -968,6 +1018,8 @@ export function updateFromHeaders(provider, connectionId, headers, status, model
     // Without disconnect() here, every 429 leaks a heartbeat timer until GC reclaims
     // the abandoned Bottleneck; under sustained quota pressure that is a real leak.
     evictLimiter(limiterKey, limiter);
+    const blockedLimiter = getLimiter(provider, connectionId, model);
+    pauseLimiterUntil(provider, connectionId, model, blockedLimiter, retryAfterMs);
     return;
   }
 

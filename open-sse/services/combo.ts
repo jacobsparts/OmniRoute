@@ -7,6 +7,8 @@
 
 import { errorResponse, errorResponseWithComboDiagnostics } from "../utils/error.ts";
 
+import { isModelLocked } from "./accountFallback.ts";
+
 import { recordComboFailure } from "./combo/failureTracker.ts";
 import { buildRecoveryHint } from "./combo/pinRecovery.ts";
 import { buildTargetTimeoutRunner } from "./combo/targetTimeoutRunner.ts";
@@ -612,27 +614,10 @@ export async function buildAutoCandidates(
   // Filter out candidates whose model is hidden by the user in the dashboard,
   // then drop vendor-retired ids so auto-combo cannot pick them (#11625).
   maybeWarnBootstrapDominant(hasStats);
-  return rejectRetiredAutoComboCandidates(
-    candidates.filter((c) => {
-      const hiddenModels = hiddenModelsMap.get(c.provider);
-      if (hiddenModels?.has(c.model)) return false;
-
-      const canonicalProvider = parseModel(c.modelStr).provider || c.provider;
-
-      if (c.connectionId) {
-        return !isModelLocked(canonicalProvider, c.connectionId, c.model);
-      }
-
-      const directProviderConnections = connectionsByProvider.get(c.provider) ?? [];
-      const providerConnections =
-        directProviderConnections.length > 0
-          ? directProviderConnections
-          : (connectionsByProvider.get(canonicalProvider) ?? []);
-      if (providerConnections.length === 0) return true;
-
-      return providerConnections.some(
-        (connection) => !isModelLocked(canonicalProvider, String(connection.id ?? ""), c.model)
-      );
+  const visibleCandidates = rejectRetiredAutoComboCandidates(
+    candidates.filter((candidate) => {
+      const hiddenModels = hiddenModelsMap.get(candidate.provider);
+      return !hiddenModels?.has(candidate.model);
     })
   );
   const baseCandidateExecutionKey = (candidate: AutoProviderCandidate): string => {
