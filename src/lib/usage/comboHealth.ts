@@ -125,7 +125,10 @@ function calculateGini(values: number[]): number {
   return (2 * weightedSum) / (count * sum) - (count + 1) / count;
 }
 
-export function buildProviderHealth(provider: string, snapshots: QuotaSnapshotRow[]): ProviderHealth {
+export function buildProviderHealth(
+  provider: string,
+  snapshots: QuotaSnapshotRow[]
+): ProviderHealth {
   if (snapshots.length === 0) {
     return {
       provider,
@@ -334,7 +337,10 @@ function buildPerformance(comboName: string, since: string): ComboHealthMetrics[
   };
 }
 
-export function buildQuotaHealth(providers: string[], since: string): ComboHealthMetrics["quotaHealth"] {
+export function buildQuotaHealth(
+  providers: string[],
+  since: string
+): ComboHealthMetrics["quotaHealth"] {
   const providerHealth = providers.map((provider) =>
     buildProviderHealth(provider, getQuotaSnapshots({ provider, since }))
   );
